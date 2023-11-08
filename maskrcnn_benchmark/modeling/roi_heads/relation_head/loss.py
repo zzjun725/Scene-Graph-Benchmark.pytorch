@@ -204,7 +204,8 @@ class RelationHierarchicalLossComputation(object):
             finetune_obj_loss (Tensor)
         """
         fg_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
-        loss_refine_obj = self.criterion_loss(refine_logits, fg_labels.long())
+        refine_obj_logits = cat(refine_logits, dim=0)
+        loss_refine_obj = self.criterion_loss(refine_obj_logits, fg_labels.long())
         rel_labels = cat(rel_labels, dim=0)  # (rel, 1)
         rel1_prob = cat(rel1_prob, dim=0)  # (rel, 15)
         rel2_prob = cat(rel2_prob, dim=0)  # (rel, 11)
