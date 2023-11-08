@@ -73,7 +73,7 @@ class RelationSampling(object):
             rel_possibility[tgt_head_idxs, tgt_tail_idxs] = 0
             tgt_bg_idxs = torch.nonzero(rel_possibility > 0)
 
-            # generate fg bg rel_pairs
+            # generate fg bg rel_pairs, bg seems to be proposal pairs that do not have relations
             if tgt_pair_idxs.shape[0] > num_pos_per_img:
                 perm = torch.randperm(tgt_pair_idxs.shape[0], device=device)[:num_pos_per_img]
                 tgt_pair_idxs = tgt_pair_idxs[perm]
@@ -82,16 +82,17 @@ class RelationSampling(object):
 
             num_bg = self.batch_size_per_image - num_fg
             perm = torch.randperm(tgt_bg_idxs.shape[0], device=device)[:num_bg]
-            tgt_bg_idxs = tgt_bg_idxs[perm]
+            tgt_bg_idxs = tgt_bg_idxs[perm]  # [num_bg, 2]
 
+            # cat([num_fg, 2], [num_bg, 2]) = [num_fg+num_bg, 2]
             img_rel_idxs = torch.cat((tgt_pair_idxs, tgt_bg_idxs), dim=0)
+            # [num_fg+num_bg], label of bg is 0
             img_rel_labels = torch.cat((tgt_rel_labs.long(), torch.zeros(tgt_bg_idxs.shape[0], device=device).long()), dim=0).contiguous().view(-1)
 
             rel_idx_pairs.append(img_rel_idxs)
             rel_labels.append(img_rel_labels)
 
         return proposals, rel_labels, rel_idx_pairs, rel_sym_binarys
-
 
     def detect_relsample(self, proposals, targets):
         # corresponding to rel_assignments function in neural-motifs

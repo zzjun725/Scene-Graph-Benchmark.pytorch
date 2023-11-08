@@ -9,6 +9,7 @@ from maskrcnn_benchmark.structures.boxlist_ops import cat_boxlist
 from maskrcnn_benchmark.modeling.box_coder import BoxCoder
 from .utils_relation import obj_prediction_nms
 
+
 class PostProcessor(nn.Module):
     """
     From a set of classification scores, box regression and proposals,
@@ -17,10 +18,10 @@ class PostProcessor(nn.Module):
     """
 
     def __init__(
-        self,
-        attribute_on,
-        use_gt_box=False,
-        later_nms_pred_thres=0.3,
+            self,
+            attribute_on,
+            use_gt_box=False,
+            later_nms_pred_thres=0.3,
     ):
         """
         Arguments:
@@ -46,7 +47,7 @@ class PostProcessor(nn.Module):
                 the extra fields labels and scores
         """
         relation_logits, refine_logits = x
-        
+
         if self.attribute_on:
             if isinstance(refine_logits[0], (list, tuple)):
                 finetune_obj_logits, finetune_att_logits = refine_logits
@@ -59,7 +60,7 @@ class PostProcessor(nn.Module):
 
         results = []
         for i, (rel_logit, obj_logit, rel_pair_idx, box) in enumerate(zip(
-            relation_logits, finetune_obj_logits, rel_pair_idxs, boxes
+                relation_logits, finetune_obj_logits, rel_pair_idxs, boxes
         )):
             if self.attribute_on:
                 att_logit = finetune_att_logits[i]
@@ -77,7 +78,7 @@ class PostProcessor(nn.Module):
                 obj_pred = obj_prediction_nms(box.get_field('boxes_per_cls'), obj_logit, self.later_nms_pred_thres)
                 obj_score_ind = torch.arange(num_obj_bbox, device=obj_logit.device) * num_obj_class + obj_pred
                 obj_scores = obj_class_prob.view(-1)[obj_score_ind]
-            
+
             assert obj_scores.shape[0] == num_obj_bbox
             obj_class = obj_pred
 
@@ -89,14 +90,18 @@ class PostProcessor(nn.Module):
                 device = obj_class.device
                 batch_size = obj_class.shape[0]
                 regressed_box_idxs = obj_class
-                boxlist = BoxList(box.get_field('boxes_per_cls')[torch.arange(batch_size, device=device), regressed_box_idxs], box.size, 'xyxy')
-            boxlist.add_field('pred_labels', obj_class) # (#obj, )
-            boxlist.add_field('pred_scores', obj_scores) # (#obj, )
+                boxlist = BoxList(
+                    box.get_field('boxes_per_cls')[torch.arange(batch_size, device=device), regressed_box_idxs],
+                    box.size, 'xyxy')
+            boxlist.add_field('pred_labels', obj_class)  # (#obj, )
+            boxlist.add_field('pred_scores', obj_scores)  # (#obj, )
 
             if self.attribute_on:
                 boxlist.add_field('pred_attributes', att_prob)
-            
+
             # sorting triples according to score production
+            # There seems no relation between the ad-hoc fields and the box in the box list.
+            # So, here seems we just use the boxlist as the interface to carry all info we need.
             obj_scores0 = obj_scores[rel_pair_idx[:, 0]]
             obj_scores1 = obj_scores[rel_pair_idx[:, 1]]
             rel_class_prob = F.softmax(rel_logit, -1)
@@ -109,9 +114,9 @@ class PostProcessor(nn.Module):
             rel_class_prob = rel_class_prob[sorting_idx]
             rel_labels = rel_class[sorting_idx]
 
-            boxlist.add_field('rel_pair_idxs', rel_pair_idx) # (#rel, 2)
-            boxlist.add_field('pred_rel_scores', rel_class_prob) # (#rel, #rel_class)
-            boxlist.add_field('pred_rel_labels', rel_labels) # (#rel, )
+            boxlist.add_field('rel_pair_idxs', rel_pair_idx)  # (#rel, 2)
+            boxlist.add_field('pred_rel_scores', rel_class_prob)  # (#rel, #rel_class)
+            boxlist.add_field('pred_rel_labels', rel_labels)  # (#rel, )
             # should have fields : rel_pair_idxs, pred_rel_class_prob, pred_rel_labels, pred_labels, pred_scores
             # Note
             # TODO Kaihua: add a new type of element, which can have different length with boxlist (similar to field, except that once 
@@ -121,14 +126,142 @@ class PostProcessor(nn.Module):
         return results
 
 
+class HierarchPostProcessor(nn.Module):
+    """
+    From a set of classification scores, box regression and proposals,
+    computes the post-processed boxes, and applies NMS to obtain the
+    final results
+    """
+
+    def __init__(
+            self,
+            attribute_on,
+            use_gt_box=False,
+            later_nms_pred_thres=0.3,
+    ):
+        """
+        Arguments:
+
+        """
+        super(HierarchPostProcessor, self).__init__()
+        self.attribute_on = attribute_on
+        self.use_gt_box = use_gt_box
+        self.later_nms_pred_thres = later_nms_pred_thres
+        self.geo_label = ['1', '2', '3', '4', '5', '6', '8', '10', '22', '23', '29', '31', '32', '33', '43']
+        self.pos_label = ['9', '16', '17', '20', '27', '30', '36', '42', '48', '49', '50']
+        self.sem_label = ['7', '11', '12', '13', '14', '15', '18', '19', '21', '24', '25', '26', '28', '34', '35', '37',
+                          '38', '39', '40', '41', '44', '45', '46', '47']
+        self.geo_label_tensor = torch.tensor([int(x) for x in self.geo_label])
+        self.pos_label_tensor = torch.tensor([int(x) for x in self.pos_label])
+        self.sem_label_tensor = torch.tensor([int(x) for x in self.sem_label])
+
+    def forward(self, x, rel_pair_idxs, boxes):
+        """
+        Arguments:
+            x: rel1_prob, rel2_prob, rel3_prob, super_rel_prob, refine_logits
+            rel_pair_idxs （list[tensor]): subject and object indice of each relation,
+                the size of tensor is (num_rel, 2)
+            boxes (list[BoxList]): bounding boxes that are used as
+                reference, one for ech image
+
+        Returns:
+            results (list[BoxList]): one BoxList for each image, containing
+                the extra fields labels and scores
+        """
+        rel1_probs, rel2_probs, rel3_probs, super_rel_probs, refine_logits = x
+        # Assume no attr
+        finetune_obj_logits = refine_logits
+
+        results = []
+        for i, (rel1_prob, rel2_prob, rel3_prob, super_rel_prob, obj_logit, rel_pair_idx, box) in enumerate(zip(
+                rel1_probs, rel2_probs, rel3_probs, super_rel_probs, finetune_obj_logits, rel_pair_idxs, boxes
+        )):
+            # i: index of image
+            obj_class_prob = F.softmax(obj_logit, -1)
+            obj_class_prob[:, 0] = 0  # set background score to 0
+            num_obj_bbox = obj_class_prob.shape[0]
+            num_obj_class = obj_class_prob.shape[1]
+
+            if self.use_gt_box:
+                obj_scores, obj_pred = obj_class_prob[:, 1:].max(dim=1)
+                obj_pred = obj_pred + 1
+            else:
+                # NOTE: by kaihua, apply late nms for object prediction
+                obj_pred = obj_prediction_nms(box.get_field('boxes_per_cls'), obj_logit, self.later_nms_pred_thres)
+                obj_score_ind = torch.arange(num_obj_bbox, device=obj_logit.device) * num_obj_class + obj_pred
+                obj_scores = obj_class_prob.view(-1)[obj_score_ind]
+
+            assert obj_scores.shape[0] == num_obj_bbox
+            obj_class = obj_pred
+
+            if self.use_gt_box:
+                boxlist = box
+            else:
+                # mode==sgdet
+                # apply regression based on finetuned object class
+                device = obj_class.device
+                batch_size = obj_class.shape[0]
+                regressed_box_idxs = obj_class
+                boxlist = BoxList(
+                    box.get_field('boxes_per_cls')[torch.arange(batch_size, device=device), regressed_box_idxs],
+                    box.size, 'xyxy')
+            boxlist.add_field('pred_labels', obj_class)  # (#obj, )
+            boxlist.add_field('pred_scores', obj_scores)  # (#obj, )
+
+            # sorting triples according to score production
+            obj_scores0 = obj_scores[rel_pair_idx[:, 0]]
+            obj_scores1 = obj_scores[rel_pair_idx[:, 1]]
+
+            self.geo_label_tensor.to(rel1_prob.device)
+            self.pos_label_tensor.to(rel1_prob.device)
+            self.sem_label_tensor.to(rel1_prob.device)
+
+            rel1_scores, rel1_class = rel1_prob.max(dim=1)
+            rel1_class = self.geo_label_tensor[rel1_class]
+            rel2_scores, rel2_class = rel2_prob.max(dim=1)
+            rel2_class = self.pos_label_tensor[rel2_class]
+            rel3_scores, rel3_class = rel3_prob.max(dim=1)
+            rel3_class = self.sem_label_tensor[rel3_class]
+
+            # p TODO: regulization here
+            cat_class_prob = torch.cat((torch.exp(super_rel_prob[:, 0:1]), torch.exp(rel1_prob), torch.exp(rel2_prob), torch.exp(rel3_prob)), dim=1)
+            cat_class_prob = torch.cat((cat_class_prob, cat_class_prob, cat_class_prob), dim=0)
+            cat_rel_pair_idx = torch.cat((rel_pair_idx, rel_pair_idx, rel_pair_idx), dim=0)
+            cat_obj_score0 = torch.cat((obj_scores0, obj_scores0, obj_scores0), dim=0)
+            cat_obj_score1 = torch.cat((obj_scores1, obj_scores1, obj_scores1), dim=0)
+            cat_labels = torch.cat((rel1_class, rel2_class, rel3_class), dim=0)
+            cat_scores = torch.cat((rel1_scores, rel2_scores, rel3_scores), dim=0)
+
+            triple_scores = cat_scores * cat_obj_score0 * cat_obj_score1
+            _, sorting_idx = torch.sort(triple_scores.view(-1), dim=0, descending=True)
+            rel_pair_idx = cat_rel_pair_idx[sorting_idx]
+            rel_class_prob = cat_class_prob[sorting_idx]
+            rel_labels = cat_labels[sorting_idx]
+
+            boxlist.add_field('rel_pair_idxs', rel_pair_idx)  # (#rel, 2)
+            boxlist.add_field('pred_rel_scores', rel_class_prob)  # (#rel, #rel_class)
+            boxlist.add_field('pred_rel_labels', rel_labels)  # (#rel, )
+
+            # should have fields : rel_pair_idxs, pred_rel_class_prob, pred_rel_labels, pred_labels, pred_scores
+            results.append(boxlist)
+        return results
+
+
 def make_roi_relation_post_processor(cfg):
     attribute_on = cfg.MODEL.ATTRIBUTE_ON
     use_gt_box = cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX
     later_nms_pred_thres = cfg.TEST.RELATION.LATER_NMS_PREDICTION_THRES
 
-    postprocessor = PostProcessor(
-        attribute_on,
-        use_gt_box,
-        later_nms_pred_thres,
-    )
+    if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor":
+        postprocessor = HierarchPostProcessor(
+            attribute_on,
+            use_gt_box,
+            later_nms_pred_thres,
+        )
+    else:
+        postprocessor = PostProcessor(
+            attribute_on,
+            use_gt_box,
+            later_nms_pred_thres,
+        )
     return postprocessor
