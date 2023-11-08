@@ -312,16 +312,18 @@ class MotifHierarchicalPredictor(nn.Module):
         rel3_bias = bias[:, self.sem_label_tensor]  # (rel, 24)
         super_bias = torch.stack(
             (
-                bias[:, 0],
-                rel1_bias.max(dim=1)[0],
-                rel2_bias.max(dim=1)[0],
-                rel3_bias.max(dim=1)[0]
+                torch.exp(rel1_bias).sum(dim=1),
+                torch.exp(rel2_bias).sum(dim=1),
+                torch.exp(rel3_bias).sum(dim=1),
             ),
-            dim=1  # Stack along the second dimension to match the shape (rel, 4)
+            dim=1  # Stack along the second dimension to match the shape (rel, 3)
         )
         # print(super_bias.shape)
         # print(super_bias)
-
+        # print(torch.exp(bias[:, 0]))
+        super_bias = torch.log(super_bias)
+        # print(super_bias.shape)
+        # print(super_bias)
         rel1_logits, rel2_logits, rel3_logits, super_logits = self.rel_compress(prod_rep)
         rel1_logits = rel1_logits + rel1_bias
         rel2_logits = rel2_logits + rel2_bias
@@ -330,9 +332,9 @@ class MotifHierarchicalPredictor(nn.Module):
 
         # SOFTMAX TODO: T?
         super_relation = F.log_softmax(super_logits, dim=1)
-        relation_1 = F.log_softmax(rel1_logits, dim=1) + super_relation[:, 1].view(-1, 1)
-        relation_2 = F.log_softmax(rel2_logits, dim=1) + super_relation[:, 2].view(-1, 1)
-        relation_3 = F.log_softmax(rel3_logits, dim=1) + super_relation[:, 3].view(-1, 1)
+        relation_1 = F.log_softmax(rel1_logits, dim=1) + super_relation[:, 0].view(-1, 1)
+        relation_2 = F.log_softmax(rel2_logits, dim=1) + super_relation[:, 1].view(-1, 1)
+        relation_3 = F.log_softmax(rel3_logits, dim=1) + super_relation[:, 2].view(-1, 1)
 
         obj_dists = obj_dists.split(num_objs, dim=0)
         relation1_dist = relation_1.split(num_rels, dim=0)

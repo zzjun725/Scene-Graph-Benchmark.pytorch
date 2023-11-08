@@ -236,15 +236,113 @@ class RelationSampling(object):
         return cat((fg_rel_triplets, bg_rel_triplets), dim=0), binary_rel
 
 
+class RelationNoBgSampling(object):
+    def __init__(
+            self,
+            fg_thres,
+            require_overlap,
+            num_sample_per_gt_rel,
+            batch_size_per_image,
+            positive_fraction,
+            use_gt_box,
+            test_overlap,
+    ):
+        self.fg_thres = fg_thres
+        self.require_overlap = require_overlap
+        self.num_sample_per_gt_rel = num_sample_per_gt_rel
+        self.batch_size_per_image = batch_size_per_image
+        self.positive_fraction = positive_fraction
+        self.use_gt_box = use_gt_box
+        self.test_overlap = test_overlap
+
+    def prepare_test_pairs(self, device, proposals):
+        # prepare object pairs for relation prediction
+        rel_pair_idxs = []
+        for p in proposals:
+            n = len(p)
+            cand_matrix = torch.ones((n, n), device=device) - torch.eye(n, device=device)
+            # mode==sgdet and require_overlap
+            if (not self.use_gt_box) and self.test_overlap:
+                cand_matrix = cand_matrix.byte() & boxlist_iou(p, p).gt(0).byte()
+            idxs = torch.nonzero(cand_matrix).view(-1, 2)
+            if len(idxs) > 0:
+                rel_pair_idxs.append(idxs)
+            else:
+                # if there is no candidate pairs, give a placeholder of [[0, 0]]
+                rel_pair_idxs.append(torch.zeros((1, 2), dtype=torch.int64, device=device))
+        return rel_pair_idxs
+
+    def gtbox_relsample(self, proposals, targets):
+        assert self.use_gt_box
+        num_pos_per_img = int(self.batch_size_per_image * self.positive_fraction)
+        rel_idx_pairs = []
+        rel_labels = []
+        rel_sym_binarys = []
+        for img_id, (proposal, target) in enumerate(zip(proposals, targets)):
+            device = proposal.bbox.device
+            num_prp = proposal.bbox.shape[0]
+
+            assert proposal.bbox.shape[0] == target.bbox.shape[0]
+            tgt_rel_matrix = target.get_field("relation")  # [tgt, tgt]
+            tgt_pair_idxs = torch.nonzero(tgt_rel_matrix > 0)
+            assert tgt_pair_idxs.shape[1] == 2
+            tgt_head_idxs = tgt_pair_idxs[:, 0].contiguous().view(-1)
+            tgt_tail_idxs = tgt_pair_idxs[:, 1].contiguous().view(-1)
+            tgt_rel_labs = tgt_rel_matrix[tgt_head_idxs, tgt_tail_idxs].contiguous().view(-1)
+
+            # sym_binary_rels
+            binary_rel = torch.zeros((num_prp, num_prp), device=device).long()
+            binary_rel[tgt_head_idxs, tgt_tail_idxs] = 1
+            binary_rel[tgt_tail_idxs, tgt_head_idxs] = 1
+            rel_sym_binarys.append(binary_rel)
+
+            rel_possibility = torch.ones((num_prp, num_prp), device=device).long() - torch.eye(num_prp,
+                                                                                               device=device).long()
+            rel_possibility[tgt_head_idxs, tgt_tail_idxs] = 0
+            tgt_bg_idxs = torch.nonzero(rel_possibility > 0)
+
+            # generate fg bg rel_pairs, bg seems to be proposal pairs that do not have relations
+            if tgt_pair_idxs.shape[0] > num_pos_per_img:
+                perm = torch.randperm(tgt_pair_idxs.shape[0], device=device)[:num_pos_per_img]
+                tgt_pair_idxs = tgt_pair_idxs[perm]
+                tgt_rel_labs = tgt_rel_labs[perm]
+            num_fg = min(tgt_pair_idxs.shape[0], num_pos_per_img)
+
+            num_bg = self.batch_size_per_image - num_fg
+            perm = torch.randperm(tgt_bg_idxs.shape[0], device=device)[:num_bg]
+            tgt_bg_idxs = tgt_bg_idxs[perm]  # [num_bg, 2]
+
+            # # cat([num_fg, 2], [num_bg, 2]) = [num_fg+num_bg, 2]
+            # img_rel_idxs = torch.cat((tgt_pair_idxs, tgt_bg_idxs), dim=0)
+            # # [num_fg+num_bg], label of bg is 0
+            # img_rel_labels = torch.cat((tgt_rel_labs.long(), torch.zeros(tgt_bg_idxs.shape[0], device=device).long()),
+            #                            dim=0).contiguous().view(-1)
+
+            rel_idx_pairs.append(tgt_pair_idxs)
+            rel_labels.append(tgt_rel_labs.contiguous().view(-1))
+
+        return proposals, rel_labels, rel_idx_pairs, rel_sym_binarys
+
 def make_roi_relation_samp_processor(cfg):
-    samp_processor = RelationSampling(
-        cfg.MODEL.ROI_HEADS.FG_IOU_THRESHOLD,
-        cfg.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP,
-        cfg.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL,
-        cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE, 
-        cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION,
-        cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX,
-        cfg.TEST.RELATION.REQUIRE_OVERLAP,
-    )
+    if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor":
+        samp_processor = RelationNoBgSampling(
+            cfg.MODEL.ROI_HEADS.FG_IOU_THRESHOLD,
+            cfg.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP,
+            cfg.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL,
+            cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE,
+            cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION,
+            cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX,
+            cfg.TEST.RELATION.REQUIRE_OVERLAP,
+        )
+    else:
+        samp_processor = RelationSampling(
+            cfg.MODEL.ROI_HEADS.FG_IOU_THRESHOLD,
+            cfg.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP,
+            cfg.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL,
+            cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE,
+            cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION,
+            cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX,
+            cfg.TEST.RELATION.REQUIRE_OVERLAP,
+        )
 
     return samp_processor

@@ -206,6 +206,7 @@ class RelationHierarchicalLossComputation(object):
         fg_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
         refine_obj_logits = cat(refine_logits, dim=0)
         loss_refine_obj = self.criterion_loss(refine_obj_logits, fg_labels.long())
+
         rel_labels = cat(rel_labels, dim=0)  # (rel, 1)
         rel1_prob = cat(rel1_prob, dim=0)  # (rel, 15)
         rel2_prob = cat(rel2_prob, dim=0)  # (rel, 11)
@@ -222,8 +223,8 @@ class RelationHierarchicalLossComputation(object):
         geo_label_mask = (rel_labels.unsqueeze(1) == geo_label_tensor).any(1)
         pos_label_mask = (rel_labels.unsqueeze(1) == pos_label_tensor).any(1)
         sem_label_mask = (rel_labels.unsqueeze(1) == sem_label_tensor).any(1)
-        # Suppose 0 is background, 1 is geo, 2 is pos, 3 is sem
-        super_rel_label = geo_label_mask * 1 + pos_label_mask * 2 + sem_label_mask * 3
+        # Suppose 0 is geo, 1 is pos, 3 is sem
+        super_rel_label = pos_label_mask * 1 + sem_label_mask * 2
 
         loss_relation = 0
         geo_labels = rel_labels[geo_label_mask]
@@ -258,7 +259,6 @@ class RelationHierarchicalLossComputation(object):
         # print('=====================')
         # print(super_rel_prob)
         # print(super_rel_prob.shape)
-        #
         # assert False
 
         return loss_relation, loss_refine_obj

@@ -224,7 +224,7 @@ class HierarchPostProcessor(nn.Module):
             rel3_class = self.sem_label_tensor[rel3_class]
 
             # p TODO: regulization here
-            cat_class_prob = torch.cat((torch.exp(super_rel_prob[:, 0:1]), torch.exp(rel1_prob), torch.exp(rel2_prob), torch.exp(rel3_prob)), dim=1)
+            cat_class_prob = torch.cat((torch.exp(rel1_prob), torch.exp(rel2_prob), torch.exp(rel3_prob)), dim=1)
             cat_class_prob = torch.cat((cat_class_prob, cat_class_prob, cat_class_prob), dim=0)
             cat_rel_pair_idx = torch.cat((rel_pair_idx, rel_pair_idx, rel_pair_idx), dim=0)
             cat_obj_score0 = torch.cat((obj_scores0, obj_scores0, obj_scores0), dim=0)

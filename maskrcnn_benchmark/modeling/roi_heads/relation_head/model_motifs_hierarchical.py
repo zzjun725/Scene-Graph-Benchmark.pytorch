@@ -14,8 +14,7 @@ class BayesHead(nn.Module):
         self.fc3_1 = nn.Linear(input_dim, num_geometric)
         self.fc3_2 = nn.Linear(input_dim, num_possessive)
         self.fc3_3 = nn.Linear(input_dim, num_semantic)
-        # 0 is background
-        self.fc5 = nn.Linear(input_dim, 4)
+        self.fc5 = nn.Linear(input_dim, 3)
         self.T1 = T1
         self.T2 = T2
         self.T3 = T3
