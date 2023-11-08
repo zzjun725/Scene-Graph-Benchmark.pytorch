@@ -165,6 +165,7 @@ class RelationHierarchicalLossComputation(object):
         # Assume NLL loss here.
         # TODO: is class_weight a pre-defined constant?
         # class_weight = 1 - relation_count / torch.sum(relation_count)
+        self.criterion_loss = nn.CrossEntropyLoss()
         self.geo_criterion_loss = nn.NLLLoss()
         self.pos_criterion_loss = nn.NLLLoss()
         self.sem_criterion_loss = nn.NLLLoss()
@@ -202,6 +203,8 @@ class RelationHierarchicalLossComputation(object):
             predicate_loss (Tensor)
             finetune_obj_loss (Tensor)
         """
+        fg_labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
+        loss_refine_obj = self.criterion_loss(refine_logits, fg_labels.long())
         rel_labels = cat(rel_labels, dim=0)  # (rel, 1)
         rel1_prob = cat(rel1_prob, dim=0)  # (rel, 15)
         rel2_prob = cat(rel2_prob, dim=0)  # (rel, 11)
@@ -257,7 +260,7 @@ class RelationHierarchicalLossComputation(object):
         #
         # assert False
 
-        return loss_relation, 0
+        return loss_relation, loss_refine_obj
 
 
 class FocalLoss(nn.Module):

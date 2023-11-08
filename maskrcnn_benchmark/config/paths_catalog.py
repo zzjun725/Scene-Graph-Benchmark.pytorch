@@ -7,8 +7,8 @@ import copy
 
 class DatasetCatalog(object):
     #DATA_DIR = "/home/users/alatif/data/ImageCorpora/"
-    DATA_DIR = "/home/zhijunz/Projects/scene_graph/benchmark/Scene-Graph-Benchmark.pytorch/datasets"
-    # DATA_DIR = "/tmp/datasets"
+    # DATA_DIR = "/home/zhijunz/Projects/scene_graph/benchmark/Scene-Graph-Benchmark.pytorch/datasets"
+    DATA_DIR = "/tmp/datasets"
     DATASETS = {
         "coco_2017_train": {
             "img_dir": "coco/train2017",
