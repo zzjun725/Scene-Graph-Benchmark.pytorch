@@ -325,10 +325,11 @@ class MotifHierarchicalPredictor(nn.Module):
         # print(super_bias.shape)
         # print(super_bias)
         rel1_logits, rel2_logits, rel3_logits, super_logits = self.rel_compress(prod_rep)
-        rel1_logits = rel1_logits + rel1_bias
-        rel2_logits = rel2_logits + rel2_bias
-        rel3_logits = rel3_logits + rel3_bias
-        super_logits = super_logits + super_bias
+        if self.use_bias:
+            rel1_logits = rel1_logits + rel1_bias
+            rel2_logits = rel2_logits + rel2_bias
+            rel3_logits = rel3_logits + rel3_bias
+            super_logits = super_logits + super_bias
 
         # SOFTMAX TODO: T?
         super_relation = F.log_softmax(super_logits, dim=1)
