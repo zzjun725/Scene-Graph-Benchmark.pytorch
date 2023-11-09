@@ -305,27 +305,27 @@ class MotifHierarchicalPredictor(nn.Module):
             else:
                 prod_rep = prod_rep * union_features
 
-        # bias dimension is 51, already include the background(0)
-        bias = self.freq_bias.index_with_labels(pair_pred.long())  # (rel, 51)
-        rel1_bias = bias[:, self.geo_label_tensor]  # (rel, 15)
-        rel2_bias = bias[:, self.pos_label_tensor]  # (rel, 11)
-        rel3_bias = bias[:, self.sem_label_tensor]  # (rel, 24)
-        super_bias = torch.stack(
-            (
-                torch.exp(rel1_bias).sum(dim=1),
-                torch.exp(rel2_bias).sum(dim=1),
-                torch.exp(rel3_bias).sum(dim=1),
-            ),
-            dim=1  # Stack along the second dimension to match the shape (rel, 3)
-        )
-        # print(super_bias.shape)
-        # print(super_bias)
-        # print(torch.exp(bias[:, 0]))
-        super_bias = torch.log(super_bias)
-        # print(super_bias.shape)
-        # print(super_bias)
         rel1_logits, rel2_logits, rel3_logits, super_logits = self.rel_compress(prod_rep)
         if self.use_bias:
+            # bias dimension is 51, already include the background(0)
+            bias = self.freq_bias.index_with_labels(pair_pred.long())  # (rel, 51)
+            rel1_bias = bias[:, self.geo_label_tensor]  # (rel, 15)
+            rel2_bias = bias[:, self.pos_label_tensor]  # (rel, 11)
+            rel3_bias = bias[:, self.sem_label_tensor]  # (rel, 24)
+            super_bias = torch.stack(
+                (
+                    torch.exp(rel1_bias).sum(dim=1),
+                    torch.exp(rel2_bias).sum(dim=1),
+                    torch.exp(rel3_bias).sum(dim=1),
+                ),
+                dim=1  # Stack along the second dimension to match the shape (rel, 3)
+            )
+            # print(super_bias.shape)
+            # print(super_bias)
+            # print(torch.exp(bias[:, 0]))
+            super_bias = torch.log(super_bias)
+            # print(super_bias.shape)
+            # print(super_bias)
             rel1_logits = rel1_logits + rel1_bias
             rel2_logits = rel2_logits + rel2_bias
             rel3_logits = rel3_logits + rel3_bias
