@@ -311,17 +311,17 @@ def evaluate_relation_of_one_image(groundtruth, prediction, global_container, ev
     local_container = evaluator['eval_recall'].calculate_recall(global_container, local_container, mode)
 
     # No Graph Constraint
-    evaluator['eval_nog_recall'].calculate_recall(global_container, local_container, mode)
+    # evaluator['eval_nog_recall'].calculate_recall(global_container, local_container, mode)
     # GT Pair Accuracy
     evaluator['eval_pair_accuracy'].calculate_recall(global_container, local_container, mode)
     # Mean Recall
     evaluator['eval_mean_recall'].collect_mean_recall_items(global_container, local_container, mode)
     # No Graph Constraint Mean Recall
-    evaluator['eval_ng_mean_recall'].collect_mean_recall_items(global_container, local_container, mode)
+    # evaluator['eval_ng_mean_recall'].collect_mean_recall_items(global_container, local_container, mode)
     # Zero shot Recall
     evaluator['eval_zeroshot_recall'].calculate_recall(global_container, local_container, mode)
     # No Graph Constraint Zero-Shot Recall
-    evaluator['eval_ng_zeroshot_recall'].calculate_recall(global_container, local_container, mode)
+    # evaluator['eval_ng_zeroshot_recall'].calculate_recall(global_container, local_container, mode)
 
     return 
 
