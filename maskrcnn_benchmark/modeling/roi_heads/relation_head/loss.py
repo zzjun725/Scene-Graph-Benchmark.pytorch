@@ -240,7 +240,8 @@ class RelationHierarchicalLossComputation(object):
             loss_relation += self.pos_criterion_loss(rel2_prob[pos_label_mask], pos_labels.long())
         if sem_labels.shape[0] > 0:
             loss_relation += self.sem_criterion_loss(rel3_prob[sem_label_mask], sem_labels.long())
-        loss_relation += self.super_criterion_loss(super_rel_prob, super_rel_label.long())
+        if super_rel_label.shape[0] > 0:
+            loss_relation += self.super_criterion_loss(super_rel_prob, super_rel_label.long())
 
         ######### SANITY TEST #########
         # print(rel_labels)
@@ -254,6 +255,11 @@ class RelationHierarchicalLossComputation(object):
         # print('=====================')
         # print(rel2_prob[pos_label_mask])
         # print(rel2_prob[pos_label_mask].shape)
+        # print('=====================')
+        # print(sem_labels)
+        # print('=====================')
+        # print(rel3_prob[sem_label_mask])
+        # print(rel3_prob[sem_label_mask].shape)
         # print('=====================')
         # print(super_rel_label)
         # print('=====================')

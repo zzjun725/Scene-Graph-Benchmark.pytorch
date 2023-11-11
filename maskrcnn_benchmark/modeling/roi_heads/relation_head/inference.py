@@ -215,6 +215,19 @@ class HierarchPostProcessor(nn.Module):
             self.geo_label_tensor.to(rel1_prob.device)
             self.pos_label_tensor.to(rel1_prob.device)
             self.sem_label_tensor.to(rel1_prob.device)
+            rel1_prob = torch.exp(rel1_prob)
+            rel2_prob = torch.exp(rel2_prob)
+            rel3_prob = torch.exp(rel3_prob)
+
+            ################# DEBUG ####################
+            # rel1_prob_sum = rel1_prob.sum(dim=1)
+            # rel2_prob_sum = rel2_prob.sum(dim=1)
+            # rel3_prob_sum = rel3_prob.sum(dim=1)
+            # print(rel1_prob_sum)
+            # print(rel2_prob_sum)
+            # print(rel3_prob_sum)
+            # print(rel1_prob_sum + rel2_prob_sum + rel3_prob_sum)
+            # assert False
 
             rel1_scores, rel1_class = rel1_prob.max(dim=1)
             rel1_class = self.geo_label_tensor[rel1_class]
@@ -223,8 +236,7 @@ class HierarchPostProcessor(nn.Module):
             rel3_scores, rel3_class = rel3_prob.max(dim=1)
             rel3_class = self.sem_label_tensor[rel3_class]
 
-            # p TODO: regulization here
-            cat_class_prob = torch.cat((torch.exp(rel1_prob), torch.exp(rel2_prob), torch.exp(rel3_prob)), dim=1)
+            cat_class_prob = torch.cat((rel1_prob, rel2_prob, rel3_prob), dim=1)
             cat_class_prob = torch.cat((cat_class_prob, cat_class_prob, cat_class_prob), dim=0)
             cat_rel_pair_idx = torch.cat((rel_pair_idx, rel_pair_idx, rel_pair_idx), dim=0)
             cat_obj_score0 = torch.cat((obj_scores0, obj_scores0, obj_scores0), dim=0)
@@ -237,6 +249,19 @@ class HierarchPostProcessor(nn.Module):
             rel_pair_idx = cat_rel_pair_idx[sorting_idx]
             rel_class_prob = cat_class_prob[sorting_idx]
             rel_labels = cat_labels[sorting_idx]
+
+            ################# DEBUG ####################
+            # print(rel1_class)
+            # print(rel1_scores)
+            # print(rel1_prob)
+            # print(rel2_class)
+            # print(rel2_scores)
+            # print(rel3_class)
+            # print(rel3_scores)
+            # print(cat_labels)
+            # print(sorting_idx)
+            # print(rel_labels)
+            # assert False
 
             boxlist.add_field('rel_pair_idxs', rel_pair_idx)  # (#rel, 2)
             boxlist.add_field('pred_rel_scores', rel_class_prob)  # (#rel, #rel_class)

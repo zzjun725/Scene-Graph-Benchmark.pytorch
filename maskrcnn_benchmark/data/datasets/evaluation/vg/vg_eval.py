@@ -12,18 +12,21 @@ from maskrcnn_benchmark.data import get_dataset_statistics
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 from maskrcnn_benchmark.structures.boxlist_ops import boxlist_iou
 from maskrcnn_benchmark.utils.miscellaneous import intersect_2d, argsort_desc, bbox_overlaps
-from maskrcnn_benchmark.data.datasets.evaluation.vg.sgg_eval import SGRecall, SGNoGraphConstraintRecall, SGZeroShotRecall, SGNGZeroShotRecall, SGPairAccuracy, SGMeanRecall, SGNGMeanRecall, SGAccumulateRecall
+from maskrcnn_benchmark.data.datasets.evaluation.vg.sgg_eval import SGRecall, SGNoGraphConstraintRecall, \
+    SGZeroShotRecall, SGNGZeroShotRecall, SGPairAccuracy, SGMeanRecall, SGNGMeanRecall, SGAccumulateRecall
+
 
 def do_vg_evaluation(
-    cfg,
-    dataset,
-    predictions,
-    output_folder,
-    logger,
-    iou_types,
+        cfg,
+        dataset,
+        predictions,
+        output_folder,
+        logger,
+        iou_types,
 ):
     # get zeroshot triplet
-    zeroshot_triplet = torch.load("maskrcnn_benchmark/data/datasets/evaluation/vg/zeroshot_triplet.pytorch", map_location=torch.device("cpu")).long().numpy()
+    zeroshot_triplet = torch.load("maskrcnn_benchmark/data/datasets/evaluation/vg/zeroshot_triplet.pytorch",
+                                  map_location=torch.device("cpu")).long().numpy()
 
     attribute_on = cfg.MODEL.ATTRIBUTE_ON
     num_attributes = cfg.MODEL.ROI_ATTRIBUTE_HEAD.NUM_ATTRIBUTES
@@ -121,9 +124,9 @@ def do_vg_evaluation(
         evaluator['eval_recall'] = eval_recall
 
         # no graphical constraint
-        eval_nog_recall = SGNoGraphConstraintRecall(result_dict)
-        eval_nog_recall.register_container(mode)
-        evaluator['eval_nog_recall'] = eval_nog_recall
+        # eval_nog_recall = SGNoGraphConstraintRecall(result_dict)
+        # eval_nog_recall.register_container(mode)
+        # evaluator['eval_nog_recall'] = eval_nog_recall
 
         # test on different distribution
         eval_zeroshot_recall = SGZeroShotRecall(result_dict)
@@ -131,10 +134,10 @@ def do_vg_evaluation(
         evaluator['eval_zeroshot_recall'] = eval_zeroshot_recall
 
         # test on no graph constraint zero-shot recall
-        eval_ng_zeroshot_recall = SGNGZeroShotRecall(result_dict)
-        eval_ng_zeroshot_recall.register_container(mode)
-        evaluator['eval_ng_zeroshot_recall'] = eval_ng_zeroshot_recall
-        
+        # eval_ng_zeroshot_recall = SGNGZeroShotRecall(result_dict)
+        # eval_ng_zeroshot_recall.register_container(mode)
+        # evaluator['eval_ng_zeroshot_recall'] = eval_ng_zeroshot_recall
+
         # used by https://github.com/NVIDIA/ContrastiveLosses4VRD for sgcls and predcls
         eval_pair_accuracy = SGPairAccuracy(result_dict)
         eval_pair_accuracy.register_container(mode)
@@ -146,9 +149,9 @@ def do_vg_evaluation(
         evaluator['eval_mean_recall'] = eval_mean_recall
 
         # used for no graph constraint mean Recall@K
-        eval_ng_mean_recall = SGNGMeanRecall(result_dict, num_rel_category, dataset.ind_to_predicates, print_detail=True)
-        eval_ng_mean_recall.register_container(mode)
-        evaluator['eval_ng_mean_recall'] = eval_ng_mean_recall
+        # eval_ng_mean_recall = SGNGMeanRecall(result_dict, num_rel_category, dataset.ind_to_predicates, print_detail=True)
+        # eval_ng_mean_recall.register_container(mode)
+        # evaluator['eval_ng_mean_recall'] = eval_ng_mean_recall
 
         # prepare all inputs
         global_container = {}
@@ -160,29 +163,28 @@ def do_vg_evaluation(
         global_container['iou_thres'] = iou_thres
         global_container['attribute_on'] = attribute_on
         global_container['num_attributes'] = num_attributes
-        
+
         for groundtruth, prediction in zip(groundtruths, predictions):
             evaluate_relation_of_one_image(groundtruth, prediction, global_container, evaluator)
-        
+
         # calculate mean recall
         eval_mean_recall.calculate_mean_recall(mode)
-        eval_ng_mean_recall.calculate_mean_recall(mode)
-        
+        # eval_ng_mean_recall.calculate_mean_recall(mode)
+
         # print result
         result_str += eval_recall.generate_print_string(mode)
-        result_str += eval_nog_recall.generate_print_string(mode)
+        # result_str += eval_nog_recall.generate_print_string(mode)
         result_str += eval_zeroshot_recall.generate_print_string(mode)
-        result_str += eval_ng_zeroshot_recall.generate_print_string(mode)
+        # result_str += eval_ng_zeroshot_recall.generate_print_string(mode)
         result_str += eval_mean_recall.generate_print_string(mode)
-        result_str += eval_ng_mean_recall.generate_print_string(mode)
-        
+        # result_str += eval_ng_mean_recall.generate_print_string(mode)
+
         if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
             result_str += eval_pair_accuracy.generate_print_string(mode)
         result_str += '=' * 100 + '\n'
 
-
     logger.info(result_str)
-    
+
     if "relations" in iou_types:
         if output_folder:
             torch.save(result_dict, os.path.join(output_folder, 'result_dict.pytorch'))
@@ -242,8 +244,12 @@ def evaluate_relation_of_one_image(groundtruth, prediction, global_container, ev
     local_container['gt_classes'] = groundtruth.get_field('labels').long().detach().cpu().numpy()           # (#gt_objs, )
 
     # about relations
-    local_container['pred_rel_inds'] = prediction.get_field('rel_pair_idxs').long().detach().cpu().numpy()  # (#pred_rels, 2)
-    local_container['rel_scores'] = prediction.get_field('pred_rel_scores').detach().cpu().numpy()          # (#pred_rels, num_pred_class)
+    local_container['pred_rel_inds'] = prediction.get_field(
+        'rel_pair_idxs').long().detach().cpu().numpy()  # (#pred_rels, 2)
+    local_container['rel_scores'] = prediction.get_field(
+        'pred_rel_scores').detach().cpu().numpy()  # (#pred_rels, num_pred_class)
+    local_container['pred_rel_labels'] = prediction.get_field(
+        'pred_rel_labels').long().detach().cpu().numpy()  # (#pred_rels, 1)
 
     # about objects
     local_container['pred_boxes'] = prediction.convert('xyxy').bbox.detach().cpu().numpy()                  # (#pred_objs, 4)

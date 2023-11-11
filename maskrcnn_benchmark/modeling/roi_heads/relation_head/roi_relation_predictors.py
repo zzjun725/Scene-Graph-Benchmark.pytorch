@@ -331,7 +331,7 @@ class MotifHierarchicalPredictor(nn.Module):
             rel3_logits = rel3_logits + rel3_bias
             super_logits = super_logits + super_bias
 
-        # SOFTMAX TODO: T?
+        # SOFTMAX
         super_relation = F.log_softmax(super_logits, dim=1)
         relation_1 = F.log_softmax(rel1_logits, dim=1) + super_relation[:, 0].view(-1, 1)
         relation_2 = F.log_softmax(rel2_logits, dim=1) + super_relation[:, 1].view(-1, 1)
