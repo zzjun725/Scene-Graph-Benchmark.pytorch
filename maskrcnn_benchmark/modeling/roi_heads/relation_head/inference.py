@@ -75,8 +75,11 @@ class PostProcessor(nn.Module):
                 obj_pred = obj_pred + 1
             else:
                 # NOTE: by kaihua, apply late nms for object prediction
-                obj_pred = obj_prediction_nms(box.get_field('boxes_per_cls'), obj_logit, self.later_nms_pred_thres)
-                obj_score_ind = torch.arange(num_obj_bbox, device=obj_logit.device) * num_obj_class + obj_pred
+                obj_pred = obj_prediction_nms(box.get_field('boxes_per_cls'),
+                                              obj_logit,
+                                              self.later_nms_pred_thres)
+                obj_score_ind = torch.arange(num_obj_bbox,
+                                             device=obj_logit.device) * num_obj_class + obj_pred
                 obj_scores = obj_class_prob.view(-1)[obj_score_ind]
 
             assert obj_scores.shape[0] == num_obj_bbox
@@ -91,7 +94,8 @@ class PostProcessor(nn.Module):
                 batch_size = obj_class.shape[0]
                 regressed_box_idxs = obj_class
                 boxlist = BoxList(
-                    box.get_field('boxes_per_cls')[torch.arange(batch_size, device=device), regressed_box_idxs],
+                    box.get_field('boxes_per_cls')[torch.arange(batch_size,
+                                                                device=device), regressed_box_idxs],
                     box.size, 'xyxy')
             boxlist.add_field('pred_labels', obj_class)  # (#obj, )
             boxlist.add_field('pred_scores', obj_scores)  # (#obj, )
@@ -109,13 +113,15 @@ class PostProcessor(nn.Module):
             rel_class = rel_class + 1
             # TODO Kaihua: how about using weighted some here?  e.g. rel*1 + obj *0.8 + obj*0.8
             triple_scores = rel_scores * obj_scores0 * obj_scores1
-            _, sorting_idx = torch.sort(triple_scores.view(-1), dim=0, descending=True)
+            _, sorting_idx = torch.sort(triple_scores.view(-1), dim=0,
+                                        descending=True)
             rel_pair_idx = rel_pair_idx[sorting_idx]
             rel_class_prob = rel_class_prob[sorting_idx]
             rel_labels = rel_class[sorting_idx]
 
             boxlist.add_field('rel_pair_idxs', rel_pair_idx)  # (#rel, 2)
-            boxlist.add_field('pred_rel_scores', rel_class_prob)  # (#rel, #rel_class)
+            boxlist.add_field('pred_rel_scores',
+                              rel_class_prob)  # (#rel, #rel_class)
             boxlist.add_field('pred_rel_labels', rel_labels)  # (#rel, )
             # should have fields : rel_pair_idxs, pred_rel_class_prob, pred_rel_labels, pred_labels, pred_scores
             # Note
@@ -147,13 +153,23 @@ class HierarchPostProcessor(nn.Module):
         self.attribute_on = attribute_on
         self.use_gt_box = use_gt_box
         self.later_nms_pred_thres = later_nms_pred_thres
-        self.geo_label = ['1', '2', '3', '4', '5', '6', '8', '10', '22', '23', '29', '31', '32', '33', '43']
-        self.pos_label = ['9', '16', '17', '20', '27', '30', '36', '42', '48', '49', '50']
-        self.sem_label = ['7', '11', '12', '13', '14', '15', '18', '19', '21', '24', '25', '26', '28', '34', '35', '37',
+        self.geo_label = ['1', '2', '3', '4', '5', '6', '8', '10', '22', '23',
+                          '29', '31', '32', '33', '43']
+        self.pos_label = ['9', '16', '17', '20', '27', '30', '36', '42', '48',
+                          '49', '50']
+        self.sem_label = ['7', '11', '12', '13', '14', '15', '18', '19', '21',
+                          '24', '25', '26', '28', '34', '35', '37',
                           '38', '39', '40', '41', '44', '45', '46', '47']
         self.geo_label_tensor = torch.tensor([int(x) for x in self.geo_label])
         self.pos_label_tensor = torch.tensor([int(x) for x in self.pos_label])
         self.sem_label_tensor = torch.tensor([int(x) for x in self.sem_label])
+
+        self.common_sense_filter = False
+
+        self.label_semantic = {"1": "above", "2": "across", "3": "against", "4": "along", "5": "and", "6": "at", "7": "attached to", "8": "behind", "9": "belonging to", "10": "between", "11": "carrying", "12": "covered in", "13": "covering", "14": "eating", "15": "flying in", "16": "for", "17": "from", "18": "growing on", "19": "hanging from", "20": "has", "21": "holding", "22": "in", "23": "in front of", "24": "laying on", "25": "looking at", "26": "lying on", "27": "made of", "28": "mounted on", "29": "near", "30": "of", "31": "on", "32": "on back of", "33": "over", "34": "painted on", "35": "parked on", "36": "part of", "37": "playing", "38": "riding", "39": "says", "40": "sitting on", "41": "standing on", "42": "to", "43": "under", "44": "using", "45": "walking in", "46": "walking on", "47": "watching", "48": "wearing", "49": "wears", "50": "with"}
+        self.label_semantic = {int(k): v for k, v in self.label_semantic.items()}
+        self.obj_sementic = {"1": "airplane", "2": "animal", "3": "arm", "4": "bag", "5": "banana", "6": "basket", "7": "beach", "8": "bear", "9": "bed", "10": "bench", "11": "bike", "12": "bird", "13": "board", "14": "boat", "15": "book", "16": "boot", "17": "bottle", "18": "bowl", "19": "box", "20": "boy", "21": "branch", "22": "building", "23": "bus", "24": "cabinet", "25": "cap", "26": "car", "27": "cat", "28": "chair", "29": "child", "30": "clock", "31": "coat", "32": "counter", "33": "cow", "34": "cup", "35": "curtain", "36": "desk", "37": "dog", "38": "door", "39": "drawer", "40": "ear", "41": "elephant", "42": "engine", "43": "eye", "44": "face", "45": "fence", "46": "finger", "47": "flag", "48": "flower", "49": "food", "50": "fork", "51": "fruit", "52": "giraffe", "53": "girl", "54": "glass", "55": "glove", "56": "guy", "57": "hair", "58": "hand", "59": "handle", "60": "hat", "61": "head", "62": "helmet", "63": "hill", "64": "horse", "65": "house", "66": "jacket", "67": "jean", "68": "kid", "69": "kite", "70": "lady", "71": "lamp", "72": "laptop", "73": "leaf", "74": "leg", "75": "letter", "76": "light", "77": "logo", "78": "man", "79": "men", "80": "motorcycle", "81": "mountain", "82": "mouth", "83": "neck", "84": "nose", "85": "number", "86": "orange", "87": "pant", "88": "paper", "89": "paw", "90": "people", "91": "person", "92": "phone", "93": "pillow", "94": "pizza", "95": "plane", "96": "plant", "97": "plate", "98": "player", "99": "pole", "100": "post", "101": "pot", "102": "racket", "103": "railing", "104": "rock", "105": "roof", "106": "room", "107": "screen", "108": "seat", "109": "sheep", "110": "shelf", "111": "shirt", "112": "shoe", "113": "short", "114": "sidewalk", "115": "sign", "116": "sink", "117": "skateboard", "118": "ski", "119": "skier", "120": "sneaker", "121": "snow", "122": "sock", "123": "stand", "124": "street", "125": "surfboard", "126": "table", "127": "tail", "128": "tie", "129": "tile", "130": "tire", "131": "toilet", "132": "towel", "133": "tower", "134": "track", "135": "train", "136": "tree", "137": "truck", "138": "trunk", "139": "umbrella", "140": "vase", "141": "vegetable", "142": "vehicle", "143": "wave", "144": "wheel", "145": "window", "146": "windshield", "147": "wing", "148": "wire", "149": "woman", "150": "zebra"}
+        self.obj_sementic = {int(k): v for k, v in self.obj_sementic.items()}
 
     def forward(self, x, rel_pair_idxs, boxes):
         """
@@ -173,8 +189,10 @@ class HierarchPostProcessor(nn.Module):
         finetune_obj_logits = refine_logits
 
         results = []
-        for i, (rel1_prob, rel2_prob, rel3_prob, super_rel_prob, obj_logit, rel_pair_idx, box) in enumerate(zip(
-                rel1_probs, rel2_probs, rel3_probs, super_rel_probs, finetune_obj_logits, rel_pair_idxs, boxes
+        for i, (rel1_prob, rel2_prob, rel3_prob, super_rel_prob, obj_logit,
+                rel_pair_idx, box) in enumerate(zip(
+                rel1_probs, rel2_probs, rel3_probs, super_rel_probs,
+                finetune_obj_logits, rel_pair_idxs, boxes
         )):
             # i: index of image
             obj_class_prob = F.softmax(obj_logit, -1)
@@ -187,8 +205,11 @@ class HierarchPostProcessor(nn.Module):
                 obj_pred = obj_pred + 1
             else:
                 # NOTE: by kaihua, apply late nms for object prediction
-                obj_pred = obj_prediction_nms(box.get_field('boxes_per_cls'), obj_logit, self.later_nms_pred_thres)
-                obj_score_ind = torch.arange(num_obj_bbox, device=obj_logit.device) * num_obj_class + obj_pred
+                obj_pred = obj_prediction_nms(box.get_field('boxes_per_cls'),
+                                              obj_logit,
+                                              self.later_nms_pred_thres)
+                obj_score_ind = torch.arange(num_obj_bbox,
+                                             device=obj_logit.device) * num_obj_class + obj_pred
                 obj_scores = obj_class_prob.view(-1)[obj_score_ind]
 
             assert obj_scores.shape[0] == num_obj_bbox
@@ -203,7 +224,8 @@ class HierarchPostProcessor(nn.Module):
                 batch_size = obj_class.shape[0]
                 regressed_box_idxs = obj_class
                 boxlist = BoxList(
-                    box.get_field('boxes_per_cls')[torch.arange(batch_size, device=device), regressed_box_idxs],
+                    box.get_field('boxes_per_cls')[torch.arange(batch_size,
+                                                                device=device), regressed_box_idxs],
                     box.size, 'xyxy')
             boxlist.add_field('pred_labels', obj_class)  # (#obj, )
             boxlist.add_field('pred_scores', obj_scores)  # (#obj, )
@@ -219,16 +241,7 @@ class HierarchPostProcessor(nn.Module):
             rel2_prob = torch.exp(rel2_prob)
             rel3_prob = torch.exp(rel3_prob)
 
-            ################# DEBUG ####################
-            # rel1_prob_sum = rel1_prob.sum(dim=1)
-            # rel2_prob_sum = rel2_prob.sum(dim=1)
-            # rel3_prob_sum = rel3_prob.sum(dim=1)
-            # print(rel1_prob_sum)
-            # print(rel2_prob_sum)
-            # print(rel3_prob_sum)
-            # print(rel1_prob_sum + rel2_prob_sum + rel3_prob_sum)
-            # assert False
-
+            # For Bayesian classification head, we predict three edges for one pair(each edge for one super category), then gather all the predictions for ranking.
             rel1_scores, rel1_class = rel1_prob.max(dim=1)
             rel1_class = self.geo_label_tensor[rel1_class]
             rel2_scores, rel2_class = rel2_prob.max(dim=1)
@@ -236,35 +249,30 @@ class HierarchPostProcessor(nn.Module):
             rel3_scores, rel3_class = rel3_prob.max(dim=1)
             rel3_class = self.sem_label_tensor[rel3_class]
 
-            cat_class_prob = torch.cat((rel1_prob, rel2_prob, rel3_prob), dim=1)
-            cat_class_prob = torch.cat((cat_class_prob, cat_class_prob, cat_class_prob), dim=0)
-            cat_rel_pair_idx = torch.cat((rel_pair_idx, rel_pair_idx, rel_pair_idx), dim=0)
-            cat_obj_score0 = torch.cat((obj_scores0, obj_scores0, obj_scores0), dim=0)
-            cat_obj_score1 = torch.cat((obj_scores1, obj_scores1, obj_scores1), dim=0)
+            cat_class_prob = torch.cat((rel1_prob, rel2_prob, rel3_prob),
+                                       dim=1)
+            cat_class_prob = torch.cat(
+                (cat_class_prob, cat_class_prob, cat_class_prob), dim=0)
+            cat_rel_pair_idx = torch.cat(
+                (rel_pair_idx, rel_pair_idx, rel_pair_idx), dim=0)
+            cat_obj_score0 = torch.cat((obj_scores0, obj_scores0, obj_scores0),
+                                       dim=0)
+            cat_obj_score1 = torch.cat((obj_scores1, obj_scores1, obj_scores1),
+                                       dim=0)
             cat_labels = torch.cat((rel1_class, rel2_class, rel3_class), dim=0)
-            cat_scores = torch.cat((rel1_scores, rel2_scores, rel3_scores), dim=0)
+            cat_scores = torch.cat((rel1_scores, rel2_scores, rel3_scores),
+                                   dim=0)
 
             triple_scores = cat_scores * cat_obj_score0 * cat_obj_score1
-            _, sorting_idx = torch.sort(triple_scores.view(-1), dim=0, descending=True)
+            _, sorting_idx = torch.sort(triple_scores.view(-1), dim=0,
+                                        descending=True)
             rel_pair_idx = cat_rel_pair_idx[sorting_idx]
             rel_class_prob = cat_class_prob[sorting_idx]
             rel_labels = cat_labels[sorting_idx]
 
-            ################# DEBUG ####################
-            # print(rel1_class)
-            # print(rel1_scores)
-            # print(rel1_prob)
-            # print(rel2_class)
-            # print(rel2_scores)
-            # print(rel3_class)
-            # print(rel3_scores)
-            # print(cat_labels)
-            # print(sorting_idx)
-            # print(rel_labels)
-            # assert False
-
             boxlist.add_field('rel_pair_idxs', rel_pair_idx)  # (#rel, 2)
-            boxlist.add_field('pred_rel_scores', rel_class_prob)  # (#rel, #rel_class)
+            boxlist.add_field('pred_rel_scores',
+                              rel_class_prob)  # (#rel, #rel_class)
             boxlist.add_field('pred_rel_labels', rel_labels)  # (#rel, )
 
             # should have fields : rel_pair_idxs, pred_rel_class_prob, pred_rel_labels, pred_labels, pred_scores
@@ -277,7 +285,9 @@ def make_roi_relation_post_processor(cfg):
     use_gt_box = cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX
     later_nms_pred_thres = cfg.TEST.RELATION.LATER_NMS_PREDICTION_THRES
 
-    if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor":
+    if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor" or \
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "TransformerHierPredictor" or \
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor":
         postprocessor = HierarchPostProcessor(
             attribute_on,
             use_gt_box,

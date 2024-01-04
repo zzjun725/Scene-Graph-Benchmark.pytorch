@@ -224,7 +224,9 @@ class RelationHierarchicalLossComputation(object):
         pos_label_mask = (rel_labels.unsqueeze(1) == pos_label_tensor).any(1)
         sem_label_mask = (rel_labels.unsqueeze(1) == sem_label_tensor).any(1)
         # Suppose 0 is geo, 1 is pos, 3 is sem
-        super_rel_label = pos_label_mask * 1 + sem_label_mask * 2
+        # super_rel_label = pos_label_mask * 1 + sem_label_mask * 2
+        # Suppose 0 is bg, 1 is geo, 2 is pos, 3 is sem
+        super_rel_label = geo_label_mask + pos_label_mask * 2 + sem_label_mask * 3
 
         loss_relation = 0
         geo_labels = rel_labels[geo_label_mask]
@@ -242,30 +244,6 @@ class RelationHierarchicalLossComputation(object):
             loss_relation += self.sem_criterion_loss(rel3_prob[sem_label_mask], sem_labels.long())
         if super_rel_label.shape[0] > 0:
             loss_relation += self.super_criterion_loss(super_rel_prob, super_rel_label.long())
-
-        ######### SANITY TEST #########
-        # print(rel_labels)
-        # print('=====================')
-        # print(geo_labels)
-        # print('=====================')
-        # print(rel1_prob[geo_label_mask])
-        # print(rel1_prob[geo_label_mask].shape)
-        # print('=====================')
-        # print(pos_labels)
-        # print('=====================')
-        # print(rel2_prob[pos_label_mask])
-        # print(rel2_prob[pos_label_mask].shape)
-        # print('=====================')
-        # print(sem_labels)
-        # print('=====================')
-        # print(rel3_prob[sem_label_mask])
-        # print(rel3_prob[sem_label_mask].shape)
-        # print('=====================')
-        # print(super_rel_label)
-        # print('=====================')
-        # print(super_rel_prob)
-        # print(super_rel_prob.shape)
-        # assert False
 
         return loss_relation, loss_refine_obj
 
@@ -295,7 +273,9 @@ class FocalLoss(nn.Module):
 
 
 def make_roi_relation_loss_evaluator(cfg):
-    if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor":
+    if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor" or \
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "TransformerHierPredictor" or \
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor":
         loss_evaluator = RelationHierarchicalLossComputation(
             cfg.MODEL.ATTRIBUTE_ON,
             cfg.MODEL.ROI_ATTRIBUTE_HEAD.NUM_ATTRIBUTES,

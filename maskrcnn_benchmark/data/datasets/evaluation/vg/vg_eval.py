@@ -1,6 +1,7 @@
 import logging
 import os
 import torch
+import torchvision
 import numpy as np
 import json
 from tqdm import tqdm
@@ -265,7 +266,7 @@ def evaluate_relation_of_one_image(groundtruth, prediction, global_container, ev
 
     # to calculate the prior label based on statistics
     evaluator['eval_zeroshot_recall'].prepare_zeroshot(global_container, local_container)
-    evaluator['eval_ng_zeroshot_recall'].prepare_zeroshot(global_container, local_container)
+    # evaluator['eval_ng_zeroshot_recall'].prepare_zeroshot(global_container, local_container)
 
     if mode == 'predcls':
         local_container['pred_boxes'] = local_container['gt_boxes']

@@ -324,25 +324,14 @@ class RelationNoBgSampling(object):
         return proposals, rel_labels, rel_idx_pairs, rel_sym_binarys
 
 def make_roi_relation_samp_processor(cfg):
-    if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor":
-        samp_processor = RelationNoBgSampling(
-            cfg.MODEL.ROI_HEADS.FG_IOU_THRESHOLD,
-            cfg.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP,
-            cfg.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL,
-            cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE,
-            cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION,
-            cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX,
-            cfg.TEST.RELATION.REQUIRE_OVERLAP,
-        )
-    else:
-        samp_processor = RelationSampling(
-            cfg.MODEL.ROI_HEADS.FG_IOU_THRESHOLD,
-            cfg.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP,
-            cfg.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL,
-            cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE,
-            cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION,
-            cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX,
-            cfg.TEST.RELATION.REQUIRE_OVERLAP,
-        )
+    samp_processor = RelationSampling(
+        cfg.MODEL.ROI_HEADS.FG_IOU_THRESHOLD,
+        cfg.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP,
+        cfg.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL,
+        cfg.MODEL.ROI_RELATION_HEAD.BATCH_SIZE_PER_IMAGE,
+        cfg.MODEL.ROI_RELATION_HEAD.POSITIVE_FRACTION,
+        cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX,
+        cfg.TEST.RELATION.REQUIRE_OVERLAP,
+    )
 
     return samp_processor

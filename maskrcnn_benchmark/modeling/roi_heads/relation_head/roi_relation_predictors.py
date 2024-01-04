@@ -12,7 +12,7 @@ from .model_msg_passing import IMPContext
 from .model_vtranse import VTransEFeature
 from .model_vctree import VCTreeLSTMContext
 from .model_motifs import LSTMContext, FrequencyBias
-from .model_motifs_hierarchical import BayesHead
+from .model_motifs_hierarchical import BayesHead, BayesHeadProb
 from .model_motifs_with_attribute import AttributeLSTMContext
 from .model_transformer import TransformerContext
 from .utils_relation import layer_init, get_box_info, get_box_pair_info
@@ -130,6 +130,127 @@ class TransformerPredictor(nn.Module):
             return (obj_dists, att_dists), rel_dists, add_losses
         else:
             return obj_dists, rel_dists, add_losses
+
+
+@registry.ROI_RELATION_PREDICTOR.register("TransformerHierPredictor")
+class TransformerHierPredictor(nn.Module):
+    def __init__(self, config, in_channels):
+        super(TransformerHierPredictor, self).__init__()
+        self.attribute_on = config.MODEL.ATTRIBUTE_ON
+        # load parameters
+        self.num_obj_cls = config.MODEL.ROI_BOX_HEAD.NUM_CLASSES
+        self.num_att_cls = config.MODEL.ROI_ATTRIBUTE_HEAD.NUM_ATTRIBUTES
+        self.num_rel_cls = config.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
+
+        assert in_channels is not None
+        num_inputs = in_channels
+        self.use_vision = config.MODEL.ROI_RELATION_HEAD.PREDICT_USE_VISION
+        self.use_bias = config.MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS
+
+        # load class dict
+        statistics = get_dataset_statistics(config)
+        obj_classes, rel_classes, att_classes = statistics['obj_classes'], statistics['rel_classes'], statistics[
+            'att_classes']
+        assert self.num_obj_cls == len(obj_classes)
+        assert self.num_att_cls == len(att_classes)
+        assert self.num_rel_cls == len(rel_classes)
+        # module construct
+        self.context_layer = TransformerContext(config, obj_classes, rel_classes, in_channels)
+
+        # post decoding
+        self.hidden_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_HIDDEN_DIM
+        self.pooling_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_POOLING_DIM
+        self.post_emb = nn.Linear(self.hidden_dim, self.hidden_dim * 2)
+        self.post_cat = nn.Linear(self.hidden_dim * 2, self.pooling_dim)
+        # self.rel_compress = nn.Linear(self.pooling_dim, self.num_rel_cls)
+        # self.ctx_compress = nn.Linear(self.hidden_dim * 2, self.num_rel_cls)
+        self.rel_compress = BayesHead(self.pooling_dim)
+        self.ctx_compress = BayesHead(self.hidden_dim * 2)
+
+        # initialize layer parameters
+        layer_init(self.post_emb, 10.0 * (1.0 / self.hidden_dim) ** 0.5, normal=True)
+        layer_init(self.post_cat, xavier=True)
+        # layer_init(self.rel_compress, xavier=True)
+        # layer_init(self.ctx_compress, xavier=True)
+        self.rel_compress.layer_init()
+        self.ctx_compress.layer_init()
+
+        if self.pooling_dim != config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM:
+            self.union_single_not_match = True
+            self.up_dim = nn.Linear(config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM, self.pooling_dim)
+            layer_init(self.up_dim, xavier=True)
+        else:
+            self.union_single_not_match = False
+
+        if self.use_bias:
+            # convey statistics into FrequencyBias to avoid loading again
+            self.freq_bias = FrequencyBias(config, statistics)
+
+    def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger=None):
+        """
+        Returns:
+            obj_dists (list[Tensor]): logits of object label distribution
+            rel_dists (list[Tensor])
+            rel_pair_idxs (list[Tensor]): (num_rel, 2) index of subject and object
+            union_features (Tensor): (batch_num_rel, context_pooling_dim): visual union feature of each pair
+        """
+        if self.attribute_on:
+            obj_dists, obj_preds, att_dists, edge_ctx = self.context_layer(roi_features, proposals, logger)
+        else:
+            obj_dists, obj_preds, edge_ctx = self.context_layer(roi_features, proposals, logger)
+
+        # post decode
+        edge_rep = self.post_emb(edge_ctx)
+        edge_rep = edge_rep.view(edge_rep.size(0), 2, self.hidden_dim)
+        head_rep = edge_rep[:, 0].contiguous().view(-1, self.hidden_dim)
+        tail_rep = edge_rep[:, 1].contiguous().view(-1, self.hidden_dim)
+
+        num_rels = [r.shape[0] for r in rel_pair_idxs]
+        num_objs = [len(b) for b in proposals]
+        assert len(num_rels) == len(num_objs)
+
+        head_reps = head_rep.split(num_objs, dim=0)
+        tail_reps = tail_rep.split(num_objs, dim=0)
+        obj_preds = obj_preds.split(num_objs, dim=0)
+
+        # from object level feature to pairwise relation level feature
+        prod_reps = []
+        pair_preds = []
+        for pair_idx, head_rep, tail_rep, obj_pred in zip(rel_pair_idxs, head_reps, tail_reps, obj_preds):
+            prod_reps.append(torch.cat((head_rep[pair_idx[:, 0]], tail_rep[pair_idx[:, 1]]), dim=-1))
+            pair_preds.append(torch.stack((obj_pred[pair_idx[:, 0]], obj_pred[pair_idx[:, 1]]), dim=1))
+        prod_rep = cat(prod_reps, dim=0)
+        pair_pred = cat(pair_preds, dim=0)
+
+        ctx_gate = self.post_cat(prod_rep)
+
+        # use union box and mask convolution
+        if self.use_vision:
+            if self.union_single_not_match:
+                visual_rep = ctx_gate * self.up_dim(union_features)
+            else:
+                visual_rep = ctx_gate * union_features
+        rel_rel1, rel_rel2, rel_rel3, rel_super = self.rel_compress(visual_rep)
+        ctx_rel1, ctx_rel2, ctx_rel3, ctx_super = self.ctx_compress(prod_rep)
+        rel1_logits = rel_rel1 + ctx_rel1
+        rel2_logits = rel_rel2 + ctx_rel2
+        rel3_logits = rel_rel3 + ctx_rel3
+        super_logits = rel_super + ctx_super
+
+        super_relation = F.log_softmax(super_logits, dim=1)
+        relation_1 = F.log_softmax(rel1_logits, dim=1) + super_relation[:, 1].view(-1, 1)
+        relation_2 = F.log_softmax(rel2_logits, dim=1) + super_relation[:, 2].view(-1, 1)
+        relation_3 = F.log_softmax(rel3_logits, dim=1) + super_relation[:, 3].view(-1, 1)
+
+        obj_dists = obj_dists.split(num_objs, dim=0)
+        relation1_dist = relation_1.split(num_rels, dim=0)
+        relation2_dist = relation_2.split(num_rels, dim=0)
+        relation3_dist = relation_3.split(num_rels, dim=0)
+        superrelation_dist = super_relation.split(num_rels, dim=0)
+
+        add_losses = {}
+
+        return obj_dists, relation1_dist, relation2_dist, relation3_dist, superrelation_dist, add_losses
 
 
 @registry.ROI_RELATION_PREDICTOR.register("IMPPredictor")
@@ -333,9 +454,9 @@ class MotifHierarchicalPredictor(nn.Module):
 
         # SOFTMAX
         super_relation = F.log_softmax(super_logits, dim=1)
-        relation_1 = F.log_softmax(rel1_logits, dim=1) + super_relation[:, 0].view(-1, 1)
-        relation_2 = F.log_softmax(rel2_logits, dim=1) + super_relation[:, 1].view(-1, 1)
-        relation_3 = F.log_softmax(rel3_logits, dim=1) + super_relation[:, 2].view(-1, 1)
+        relation_1 = F.log_softmax(rel1_logits, dim=1) + super_relation[:, 1].view(-1, 1)
+        relation_2 = F.log_softmax(rel2_logits, dim=1) + super_relation[:, 2].view(-1, 1)
+        relation_3 = F.log_softmax(rel3_logits, dim=1) + super_relation[:, 3].view(-1, 1)
 
         obj_dists = obj_dists.split(num_objs, dim=0)
         relation1_dist = relation_1.split(num_rels, dim=0)
@@ -343,7 +464,9 @@ class MotifHierarchicalPredictor(nn.Module):
         relation3_dist = relation_3.split(num_rels, dim=0)
         superrelation_dist = super_relation.split(num_rels, dim=0)
 
-        return obj_dists, relation1_dist, relation2_dist, relation3_dist, superrelation_dist
+        add_losses = {}
+
+        return obj_dists, relation1_dist, relation2_dist, relation3_dist, superrelation_dist, add_losses
 
 
 @registry.ROI_RELATION_PREDICTOR.register("MotifPredictor")
@@ -460,6 +583,123 @@ class MotifPredictor(nn.Module):
             return (obj_dists, att_dists), rel_dists, add_losses
         else:
             return obj_dists, rel_dists, add_losses
+
+
+@registry.ROI_RELATION_PREDICTOR.register("VCTreeHierPredictor")
+class VCTreeHierPredictor(nn.Module):
+    def __init__(self, config, in_channels):
+        super(VCTreeHierPredictor, self).__init__()
+        self.attribute_on = config.MODEL.ATTRIBUTE_ON
+        self.num_obj_cls = config.MODEL.ROI_BOX_HEAD.NUM_CLASSES
+        self.num_att_cls = config.MODEL.ROI_ATTRIBUTE_HEAD.NUM_ATTRIBUTES
+        self.num_rel_cls = config.MODEL.ROI_RELATION_HEAD.NUM_CLASSES
+
+        assert in_channels is not None
+        num_inputs = in_channels
+
+        # load class dict
+        statistics = get_dataset_statistics(config)
+        obj_classes, rel_classes, att_classes = statistics['obj_classes'], statistics['rel_classes'], statistics[
+            'att_classes']
+        assert self.num_obj_cls == len(obj_classes)
+        assert self.num_att_cls == len(att_classes)
+        assert self.num_rel_cls == len(rel_classes)
+        # init contextual lstm encoding
+        self.context_layer = VCTreeLSTMContext(config, obj_classes, rel_classes, statistics, in_channels)
+
+        # post decoding
+        self.hidden_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_HIDDEN_DIM
+        self.pooling_dim = config.MODEL.ROI_RELATION_HEAD.CONTEXT_POOLING_DIM
+        self.post_emb = nn.Linear(self.hidden_dim, self.hidden_dim * 2)
+        self.post_cat = nn.Linear(self.hidden_dim * 2, self.pooling_dim)
+
+        # learned-mixin
+        # self.uni_gate = nn.Linear(self.pooling_dim, self.num_rel_cls)
+        # self.frq_gate = nn.Linear(self.pooling_dim, self.num_rel_cls)
+        self.ctx_compress = BayesHeadProb(self.pooling_dim)
+        self.ctx_compress.layer_init()
+        # self.uni_compress = nn.Linear(self.pooling_dim, self.num_rel_cls)
+        # layer_init(self.uni_gate, xavier=True)
+        # layer_init(self.frq_gate, xavier=True)
+        # layer_init(self.uni_compress, xavier=True)
+
+        # initialize layer parameters
+        layer_init(self.post_emb, 10.0 * (1.0 / self.hidden_dim) ** 0.5, normal=True)
+        layer_init(self.post_cat, xavier=True)
+
+        if self.pooling_dim != config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM:
+            self.union_single_not_match = True
+            self.up_dim = nn.Linear(config.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM, self.pooling_dim)
+            layer_init(self.up_dim, xavier=True)
+        else:
+            self.union_single_not_match = False
+
+        self.freq_bias = FrequencyBias(config, statistics)
+
+    def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger=None):
+        """
+        Returns:
+            obj_dists (list[Tensor]): logits of object label distribution
+            rel_dists (list[Tensor])
+            rel_pair_idxs (list[Tensor]): (num_rel, 2) index of subject and object
+            union_features (Tensor): (batch_num_rel, context_pooling_dim): visual union feature of each pair
+        """
+
+        # encode context infomation
+        obj_dists, obj_preds, edge_ctx, binary_preds = self.context_layer(roi_features, proposals, rel_pair_idxs,
+                                                                          logger)
+
+        # post decode
+        edge_rep = F.relu(self.post_emb(edge_ctx))
+        edge_rep = edge_rep.view(edge_rep.size(0), 2, self.hidden_dim)
+        head_rep = edge_rep[:, 0].contiguous().view(-1, self.hidden_dim)
+        tail_rep = edge_rep[:, 1].contiguous().view(-1, self.hidden_dim)
+
+        num_rels = [r.shape[0] for r in rel_pair_idxs]
+        num_objs = [len(b) for b in proposals]
+        assert len(num_rels) == len(num_objs)
+
+        head_reps = head_rep.split(num_objs, dim=0)
+        tail_reps = tail_rep.split(num_objs, dim=0)
+        obj_preds = obj_preds.split(num_objs, dim=0)
+
+        prod_reps = []
+        pair_preds = []
+        for pair_idx, head_rep, tail_rep, obj_pred in zip(rel_pair_idxs, head_reps, tail_reps, obj_preds):
+            prod_reps.append(torch.cat((head_rep[pair_idx[:, 0]], tail_rep[pair_idx[:, 1]]), dim=-1))
+            pair_preds.append(torch.stack((obj_pred[pair_idx[:, 0]], obj_pred[pair_idx[:, 1]]), dim=1))
+        prod_rep = cat(prod_reps, dim=0)
+        pair_pred = cat(pair_preds, dim=0)
+
+        prod_rep = self.post_cat(prod_rep)
+
+        # learned-mixin Gate
+        # uni_gate = torch.tanh(self.uni_gate(self.drop(prod_rep)))
+        # frq_gate = torch.tanh(self.frq_gate(self.drop(prod_rep)))
+
+        if self.union_single_not_match:
+            union_features = self.up_dim(union_features)
+
+        # ctx_dists = self.ctx_compress(prod_rep * union_features)
+        relation_1, relation_2, relation_3, super_relation = self.ctx_compress(prod_rep * union_features)
+
+        # we use obj_preds instead of pred from obj_dists
+        # because in decoder_rnn, preds has been through a nms stage
+        obj_dists = obj_dists.split(num_objs, dim=0)
+        relation1_dist = relation_1.split(num_rels, dim=0)
+        relation2_dist = relation_2.split(num_rels, dim=0)
+        relation3_dist = relation_3.split(num_rels, dim=0)
+        superrelation_dist = super_relation.split(num_rels, dim=0)
+
+        add_losses = {}
+        if self.training:
+            binary_loss = []
+            for bi_gt, bi_pred in zip(rel_binarys, binary_preds):
+                bi_gt = (bi_gt > 0).float()
+                binary_loss.append(F.binary_cross_entropy_with_logits(bi_pred, bi_gt))
+            add_losses["binary_loss"] = sum(binary_loss) / len(binary_loss)
+
+        return obj_dists, relation1_dist, relation2_dist, relation3_dist, superrelation_dist, add_losses
 
 
 @registry.ROI_RELATION_PREDICTOR.register("VCTreePredictor")

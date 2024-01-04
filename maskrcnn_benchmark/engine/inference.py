@@ -5,15 +5,32 @@ import os
 
 import json
 import torch
+import torchvision
 from tqdm import tqdm
 
 from maskrcnn_benchmark.config import cfg
 from maskrcnn_benchmark.data.datasets.evaluation import evaluate
+from maskrcnn_benchmark.structures.boxlist_ops import boxlist_nms
 from ..utils.comm import is_main_process, get_world_size
 from ..utils.comm import all_gather
 from ..utils.comm import synchronize
 from ..utils.timer import Timer, get_time_str
 from .bbox_aug import im_detect_bbox_aug
+
+def selfnms(bboxes):
+    for i in range(len(bboxes)):
+        nms_keep_idx = None
+        for cls in torch.unique(categories[i]):  # per class
+            curr_class_idx = categories[i] == cls
+            curr_nms_keep_idx = torchvision.ops.nms(boxes=bboxes[i][curr_class_idx], scores=torch.ones(len(bboxes)),
+                                                    iou_threshold=0.8)       # requires (x1, y1, x2, y2)
+            if nms_keep_idx is None:
+                nms_keep_idx = (torch.nonzero(curr_class_idx).flatten())[curr_nms_keep_idx]
+            else:
+                nms_keep_idx = torch.hstack((nms_keep_idx, (torch.nonzero(curr_class_idx).flatten())[curr_nms_keep_idx]))
+
+        bboxes[i] = bboxes[i][nms_keep_idx]       # convert back to (x1, x2, y1, y2)
+        categories[i] = categories[i][nms_keep_idx]
 
 
 def compute_on_dataset(model, data_loader, device, synchronize_gather=True, timer=None):
@@ -25,6 +42,31 @@ def compute_on_dataset(model, data_loader, device, synchronize_gather=True, time
         with torch.no_grad():
             images, targets, image_ids = batch
             targets = [target.to(device) for target in targets]
+            # NMS
+            # nms_targets = []
+            # for target in targets:
+            #     labels = target.get_field('labels')
+            #     unique_label = torch.unique(labels)
+            #     nms_keep_idx = None
+            #     for cls in unique_label:
+            #         curr_class_idx = labels==cls
+            #         bboxes = target.bbox[curr_class_idx]
+            #         curr_nms_keep_idx = torchvision.ops.nms(boxes=bboxes, scores=torch.ones(len(bboxes)), iou_threshold=0.7)  # requires (x1, y1, x2, y2)
+            #         if nms_keep_idx is None:
+            #             nms_keep_idx = (torch.nonzero(curr_class_idx).flatten())[curr_nms_keep_idx]
+            #         else:
+            #             nms_keep_idx = torch.hstack((nms_keep_idx, (torch.nonzero(curr_class_idx).flatten())[curr_nms_keep_idx]))
+            #     # print(nms_keep_idx)
+            #     target = target[nms_keep_idx]
+            #     # n = target.bbox.shape[0]
+            #     # fake_scores = torch.tensor([0.9 for _ in range(n)]).cpu()
+            #     # target.add_field('scores', fake_scores)
+            #     # target, idx = boxlist_nms(target, 0.8)
+            #     # target.extra_fields.pop('scores')
+            #     target = target.to(device)
+            #     nms_targets.append(target)
+            # targets = nms_targets
+
             if timer:
                 timer.tic()
             if cfg.TEST.BBOX_AUG.ENABLED:

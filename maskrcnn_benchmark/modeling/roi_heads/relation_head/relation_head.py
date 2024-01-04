@@ -80,16 +80,18 @@ class ROIRelationHead(torch.nn.Module):
         # After subsampling, get (num_fg+num_bg) gt relation pairs, pass to the predictor get corresponding predicts
         # obj_dists, rel_dists, add_losses
         # For hierarch structure, the outout is prob, not logit
-        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor":
-            refine_logits, rel1_prob, rel2_prob, rel3_prob, super_rel_prob = (
+        if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor" or \
+            self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "TransformerHierPredictor" or \
+             self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor" :
+            refine_logits, rel1_prob, rel2_prob, rel3_prob, super_rel_prob, add_losses = (
                 self.predictor(proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger))
-            # TODO: Evaluation(test) part
             if not self.training:
                 result = self.post_processor((rel1_prob, rel2_prob, rel3_prob, super_rel_prob, refine_logits), rel_pair_idxs, proposals)
                 return roi_features, result, {}
 
             loss_relation, loss_refine = self.loss_evaluator(proposals, rel_labels, rel1_prob, rel2_prob, rel3_prob, super_rel_prob, refine_logits)
             output_losses = dict(loss_rel=loss_relation, loss_refine_obj=loss_refine)
+            output_losses.update(add_losses)
         else:
             refine_logits, relation_logits, add_losses = self.predictor(proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger)
             # for test
