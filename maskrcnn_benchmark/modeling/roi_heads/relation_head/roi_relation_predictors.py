@@ -1306,7 +1306,7 @@ class CausalAnalysisHierPredictor(nn.Module):
 
     def calculate_logits(self, vis_rep, ctx_rep, frq_rep, use_label_dist=True, mean_ctx=False):
         # TODO(zhijunz): now only use index_with_labels
-        rel1_bias, rel2_bias, rel3_bias, super_bias = self.calculate_bias_hier(frq_rep)
+        # rel1_bias, rel2_bias, rel3_bias, super_bias = self.calculate_bias_hier(frq_rep)
 
         if mean_ctx:
             ctx_rep = ctx_rep.mean(-1).unsqueeze(-1)
@@ -1318,10 +1318,17 @@ class CausalAnalysisHierPredictor(nn.Module):
         # TODO(zhijunz): now only use sum
         # elif self.fusion_type == 'sum':
         #     union_dists = vis_dists + ctx_dists + frq_dists
-        union_rel1_logits = vis_rel1_logits + ctx_rel1_logits + rel1_bias
-        union_rel2_logits = vis_rel2_logits + ctx_rel2_logits + rel2_bias
-        uninon_rel3_logits = vis_rel3_logits + ctx_rel3_logits + rel3_bias
-        super_logits = vis_super_logits + ctx_super_logits + super_bias
+
+        # Enable bias
+        # union_rel1_logits = vis_rel1_logits + ctx_rel1_logits + rel1_bias
+        # union_rel2_logits = vis_rel2_logits + ctx_rel2_logits + rel2_bias
+        # uninon_rel3_logits = vis_rel3_logits + ctx_rel3_logits + rel3_bias
+        # super_logits = vis_super_logits + ctx_super_logits + super_bias
+
+        union_rel1_logits = vis_rel1_logits + ctx_rel1_logits
+        union_rel2_logits = vis_rel2_logits + ctx_rel2_logits
+        uninon_rel3_logits = vis_rel3_logits + ctx_rel3_logits
+        super_logits = vis_super_logits + ctx_super_logits
 
         return union_rel1_logits, union_rel2_logits, uninon_rel3_logits, super_logits
 
@@ -1387,21 +1394,15 @@ class CausalAnalysisHierPredictor(nn.Module):
             geo_label_mask, pos_label_mask, sem_label_mask, geo_labels, pos_labels, sem_labels, super_rel_label = \
                 self.calculate_hier_label_mask(rel_labels)
             add_losses['auxiliary_ctx'] = \
-            self.calculate_loss_hier( vis_rel1_logits, vis_rel2_logits, vis_rel3_logits, vis_super_logits,
+            self.calculate_loss_hier(vis_rel1_logits, vis_rel2_logits, vis_rel3_logits, vis_super_logits,
                                       geo_label_mask, pos_label_mask, sem_label_mask, geo_labels, pos_labels,
                                       sem_labels, super_rel_label)
             if not (self.fusion_type == 'gate'):
                 add_losses['auxiliary_vis'] = \
-                self.calculate_loss_hier( ctx_rel1_logits, ctx_rel2_logits, ctx_rel3_logits, ctx_super_logits,
+                self.calculate_loss_hier(ctx_rel1_logits, ctx_rel2_logits, ctx_rel3_logits, ctx_super_logits,
                                             geo_label_mask, pos_label_mask, sem_label_mask, geo_labels, pos_labels,
                                             sem_labels, super_rel_label)
-                add_losses['auxiliary_frq'] = F.cross_entropy(self.freq_bias.index_with_labels(pair_pred.long()),
-                                                                rel_labels)
-            # add_losses['auxiliary_ctx'] = F.cross_entropy(self.ctx_compress(post_ctx_rep), rel_labels)
-            # if not (self.fusion_type == 'gate'):
-            #     add_losses['auxiliary_vis'] = F.cross_entropy(self.vis_compress(union_features), rel_labels)
-            #     add_losses['auxiliary_frq'] = F.cross_entropy(self.freq_bias.index_with_labels(pair_pred.long()),
-            #                                                   rel_labels)
+                # add_losses['auxiliary_frq'] = F.cross_entropy(self.freq_bias.index_with_labels(pair_pred.long()),rel_labels)
 
             # untreated average feature
             if self.spatial_for_vision:

@@ -66,8 +66,8 @@ class SGRecall(SceneGraphEvaluation):
         iou_thres = global_container['iou_thres']
 
         # Directly use the pred_rel_labels here, because we are predicting 3 edges for one pair.
-        # pred_rels = np.column_stack((pred_rel_inds, 1+rel_scores[:,1:].argmax(1)))
         # pred_scores = rel_scores[:,1:].max(1)
+        # pred_rels = np.column_stack((pred_rel_inds, 1+rel_scores[:,1:].argmax(1)))
         pred_rel_labels = local_container['pred_rel_labels']
         pred_rels = np.column_stack((pred_rel_inds, pred_rel_labels))
         pred_scores = rel_scores[:, :].max(1)
