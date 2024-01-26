@@ -1093,7 +1093,7 @@ class CausalAnalysisPredictor(nn.Module):
 @registry.ROI_RELATION_PREDICTOR.register("CausalAnalysisHierPredictor")
 class CausalAnalysisHierPredictor(nn.Module):
     def __init__(self, config, in_channels):
-        super(CausalAnalysisPredictor, self).__init__()
+        super(CausalAnalysisHierPredictor, self).__init__()
         self.cfg = config
         self.attribute_on = config.MODEL.ATTRIBUTE_ON
         self.spatial_for_vision = config.MODEL.ROI_RELATION_HEAD.CAUSAL.SPATIAL_FOR_VISION
@@ -1382,8 +1382,8 @@ class CausalAnalysisHierPredictor(nn.Module):
                 add_losses["binary_loss"] = sum(binary_loss) / len(binary_loss)
 
             # branch constraint: make sure each branch can predict independently
-            vis_rel1_logits, vis_rel2_logits, vis_rel3_logits, vis_super_logits = self.vis_compress(vis_rep)
-            ctx_rel1_logits, ctx_rel2_logits, ctx_rel3_logits, ctx_super_logits = self.ctx_compress(ctx_rep)
+            vis_rel1_logits, vis_rel2_logits, vis_rel3_logits, vis_super_logits = self.vis_compress(union_features)
+            ctx_rel1_logits, ctx_rel2_logits, ctx_rel3_logits, ctx_super_logits = self.ctx_compress(post_ctx_rep)
             geo_label_mask, pos_label_mask, sem_label_mask, geo_labels, pos_labels, sem_labels, super_rel_label = \
                 self.calculate_hier_label_mask(rel_labels)
             add_losses['auxiliary_ctx'] = \
@@ -1429,8 +1429,13 @@ class CausalAnalysisHierPredictor(nn.Module):
                 # TODO(zhijunz): now only use pair_pred and TDE
                 # rel_dists = self.calculate_logits(union_features, post_ctx_rep, pair_obj_probs) - self.calculate_logits(
                 #     union_features, avg_ctx_rep, pair_obj_probs)
-                rel1_logits, rel2_logits, rel3_logits, super_logits = self.calculate_logits(union_features, post_ctx_rep, pair_pred, False) - self.calculate_logits(
-                    union_features, avg_ctx_rep, pair_pred, False)
+                rel1_logits_1, rel2_logits_1, rel3_logits_1, super_logits_1 = self.calculate_logits(union_features, post_ctx_rep, pair_pred, False)
+                rel1_logits_2, rel2_logits_2, rel3_logits_2, super_logits_2 = self.calculate_logits(union_features, avg_ctx_rep, pair_pred, False)
+                rel1_logits = rel1_logits_1 - rel1_logits_2
+                rel2_logits = rel2_logits_1 - rel2_logits_2
+                rel3_logits = rel3_logits_1 - rel3_logits_2
+                super_logits = super_logits_1 - super_logits_2
+
             elif self.effect_type == 'NIE':  # NIE of FRQ
                 rel_dists = self.calculate_logits(union_features, avg_ctx_rep, pair_obj_probs) - self.calculate_logits(
                     union_features, avg_ctx_rep, avg_frq_rep)

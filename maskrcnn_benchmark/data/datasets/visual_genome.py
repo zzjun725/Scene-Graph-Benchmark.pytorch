@@ -223,7 +223,7 @@ def box_filter(boxes, must_overlap=False):
     overlaps = bbox_overlaps(boxes.astype(np.float), boxes.astype(np.float), to_move=0) > 0
     np.fill_diagonal(overlaps, 0)
 
-    all_possib = np.ones_like(overlaps, dtype=np.bool)
+    all_possib = np.ones_like(overlaps, dtype=bool)
     np.fill_diagonal(all_possib, 0)
 
     if must_overlap:

@@ -214,7 +214,7 @@ _C.MODEL.ROI_HEADS.SCORE_THRESH = 0.01
 _C.MODEL.ROI_HEADS.NMS = 0.3
 _C.MODEL.ROI_HEADS.POST_NMS_PER_CLS_TOPN = 300
 # Remove duplicated assigned labels for a single bbox in nms
-_C.MODEL.ROI_HEADS.NMS_FILTER_DUPLICATES = False 
+_C.MODEL.ROI_HEADS.NMS_FILTER_DUPLICATES = False
 # Maximum number of detections to return per image (100 is based on the limit
 # established for the COCO dataset)
 _C.MODEL.ROI_HEADS.DETECTIONS_PER_IMG = 256
@@ -302,13 +302,13 @@ _C.MODEL.ROI_RELATION_HEAD.CONTEXT_REL_LAYER = 1  # assert >= 1
 
 _C.MODEL.ROI_RELATION_HEAD.TRANSFORMER = CN()
 # for TransformerPredictor only
-_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.DROPOUT_RATE = 0.1   
-_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.OBJ_LAYER = 4        
-_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.REL_LAYER = 2        
-_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.NUM_HEAD = 8         
-_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.INNER_DIM = 2048     
-_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.KEY_DIM = 64         
-_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.VAL_DIM = 64         
+_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.DROPOUT_RATE = 0.1
+_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.OBJ_LAYER = 4
+_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.REL_LAYER = 2
+_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.NUM_HEAD = 8
+_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.INNER_DIM = 2048
+_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.KEY_DIM = 64
+_C.MODEL.ROI_RELATION_HEAD.TRANSFORMER.VAL_DIM = 64
 
 _C.MODEL.ROI_RELATION_HEAD.LABEL_SMOOTHING_LOSS = False
 _C.MODEL.ROI_RELATION_HEAD.PREDICT_USE_VISION = True
@@ -316,7 +316,7 @@ _C.MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS = True
 _C.MODEL.ROI_RELATION_HEAD.REQUIRE_BOX_OVERLAP = True
 _C.MODEL.ROI_RELATION_HEAD.NUM_SAMPLE_PER_GT_REL = 4  # when sample fg relationship from gt, the max number of corresponding proposal pairs
 
-# in sgdet, to make sure the detector won't missing any ground truth bbox, 
+# in sgdet, to make sure the detector won't missing any ground truth bbox,
 # we add grount truth box to the output of RPN proposals during Training
 _C.MODEL.ROI_RELATION_HEAD.ADD_GTBOX_TO_PROPOSAL_IN_TRAIN = False
 
@@ -336,7 +336,7 @@ _C.MODEL.ROI_RELATION_HEAD.CAUSAL.SPATIAL_FOR_VISION = False
 _C.MODEL.ROI_RELATION_HEAD.CAUSAL.EFFECT_TYPE = 'none' # 'TDE', 'TIE', 'TE'
 
 # proportion of predicates
-_C.MODEL.ROI_RELATION_HEAD.REL_PROP = [0.01858, 0.00057, 0.00051, 0.00109, 0.00150, 0.00489, 0.00432, 0.02913, 0.00245, 0.00121, 
+_C.MODEL.ROI_RELATION_HEAD.REL_PROP = [0.01858, 0.00057, 0.00051, 0.00109, 0.00150, 0.00489, 0.00432, 0.02913, 0.00245, 0.00121,
                                        0.00404, 0.00110, 0.00132, 0.00172, 0.00005, 0.00242, 0.00050, 0.00048, 0.00208, 0.15608,
                                        0.02650, 0.06091, 0.00900, 0.00183, 0.00225, 0.00090, 0.00028, 0.00077, 0.04844, 0.08645,
                                        0.31621, 0.00088, 0.00301, 0.00042, 0.00186, 0.00100, 0.00027, 0.01012, 0.00010, 0.01286,
@@ -520,7 +520,7 @@ _C.SOLVER.VAL_PERIOD = 2500
 
 # update schedule
 # when load from a previous model, if set to True
-# only maintain the iteration number and all the other settings of the 
+# only maintain the iteration number and all the other settings of the
 # schedule will be changed
 _C.SOLVER.UPDATE_SCHEDULE_DURING_LOAD = False
 
@@ -570,7 +570,7 @@ _C.TEST.RELATION.MULTIPLE_PREDS = False
 _C.TEST.RELATION.IOU_THRESHOLD = 0.5
 _C.TEST.RELATION.REQUIRE_OVERLAP = True
 # when predict the label of bbox, run nms on each cls
-_C.TEST.RELATION.LATER_NMS_PREDICTION_THRES = 0.3 
+_C.TEST.RELATION.LATER_NMS_PREDICTION_THRES = 0.3
 # synchronize_gather, used for sgdet, otherwise test on multi-gpu will cause out of memory
 _C.TEST.RELATION.SYNC_GATHER = False
 
