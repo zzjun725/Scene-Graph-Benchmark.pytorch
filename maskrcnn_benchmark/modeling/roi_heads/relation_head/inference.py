@@ -241,7 +241,8 @@ class HierarchPostProcessor(nn.Module):
             rel2_prob = torch.exp(rel2_prob)
             rel3_prob = torch.exp(rel3_prob)
 
-            # For Bayesian classification head, we predict three edges for one pair(each edge for one super category), then gather all the predictions for ranking.
+            # For Bayesian classification head, we predict three edges for one pair(each edge for one super category),
+            # then gather all the predictions for ranking.
             rel1_scores, rel1_class = rel1_prob.max(dim=1)
             rel1_class = self.geo_label_tensor[rel1_class]
             rel2_scores, rel2_class = rel2_prob.max(dim=1)
@@ -287,7 +288,8 @@ def make_roi_relation_post_processor(cfg):
 
     if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor" or \
             cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "TransformerHierPredictor" or \
-            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor":
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor" or \
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CausalAnalysisHierPredictor":
         postprocessor = HierarchPostProcessor(
             attribute_on,
             use_gt_box,

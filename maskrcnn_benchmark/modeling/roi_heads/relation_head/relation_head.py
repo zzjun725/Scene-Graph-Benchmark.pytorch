@@ -82,7 +82,8 @@ class ROIRelationHead(torch.nn.Module):
         # For hierarch structure, the outout is prob, not logit
         if self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor" or \
             self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "TransformerHierPredictor" or \
-             self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor" :
+             self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor" or \
+                self.cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CausalAnalysisHierPredictor":
             refine_logits, rel1_prob, rel2_prob, rel3_prob, super_rel_prob, add_losses = (
                 self.predictor(proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger))
             if not self.training:

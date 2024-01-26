@@ -275,7 +275,8 @@ class FocalLoss(nn.Module):
 def make_roi_relation_loss_evaluator(cfg):
     if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "MotifHierarchicalPredictor" or \
             cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "TransformerHierPredictor" or \
-            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor":
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "VCTreeHierPredictor" or \
+            cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "CausalAnalysisHierPredictor":
         loss_evaluator = RelationHierarchicalLossComputation(
             cfg.MODEL.ATTRIBUTE_ON,
             cfg.MODEL.ROI_ATTRIBUTE_HEAD.NUM_ATTRIBUTES,
