@@ -1319,7 +1319,6 @@ class CausalAnalysisHierPredictor(nn.Module):
         # elif self.fusion_type == 'sum':
         #     union_dists = vis_dists + ctx_dists + frq_dists
 
-        # Enable bias
         # union_rel1_logits = vis_rel1_logits + ctx_rel1_logits + rel1_bias
         # union_rel2_logits = vis_rel2_logits + ctx_rel2_logits + rel2_bias
         # uninon_rel3_logits = vis_rel3_logits + ctx_rel3_logits + rel3_bias
@@ -1331,7 +1330,6 @@ class CausalAnalysisHierPredictor(nn.Module):
         super_logits = vis_super_logits + ctx_super_logits
 
         return union_rel1_logits, union_rel2_logits, uninon_rel3_logits, super_logits
-
 
 
     def forward(self, proposals, rel_pair_idxs, rel_labels, rel_binarys, roi_features, union_features, logger=None):
@@ -1370,7 +1368,6 @@ class CausalAnalysisHierPredictor(nn.Module):
         if self.spatial_for_vision:
             post_ctx_rep = post_ctx_rep * self.spt_emb(pair_bbox)
 
-        # TODO(zhijunz): Now not support effect_analysis=None(directly return rel_dists)
         # rel_dists = self.calculate_logits(union_features, post_ctx_rep, pair_pred, use_label_dist=False)
         # rel_dist_list = rel_dists.split(num_rels, dim=0)
         rel1_logits, rel2_logits, rel3_logits, super_logits = self.calculate_logits(union_features, post_ctx_rep, pair_pred, use_label_dist=False)

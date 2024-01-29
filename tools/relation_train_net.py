@@ -31,7 +31,6 @@ from maskrcnn_benchmark.utils.logger import setup_logger, debug_print
 from maskrcnn_benchmark.utils.miscellaneous import mkdir, save_config
 from maskrcnn_benchmark.utils.metric_logger import MetricLogger
 
-
 # See if we can use apex.DistributedDataParallel instead of the torch default,
 # and enable mixed-precision via apex.amp
 try:
@@ -42,26 +41,26 @@ except ImportError:
 
 def train(cfg, local_rank, distributed, logger):
     debug_print(logger, 'prepare training')
-    model = build_detection_model(cfg) 
+    model = build_detection_model(cfg)
     debug_print(logger, 'end model construction')
 
     # modules that should be always set in eval mode
     # their eval() method should be called after model.train() is called
     eval_modules = (model.rpn, model.backbone, model.roi_heads.box,)
- 
+
     fix_eval_modules(eval_modules)
 
     # NOTE, we slow down the LR of the layers start with the names in slow_heads
     if cfg.MODEL.ROI_RELATION_HEAD.PREDICTOR == "IMPPredictor":
         slow_heads = ["roi_heads.relation.box_feature_extractor",
-                      "roi_heads.relation.union_feature_extractor.feature_extractor",]
+                      "roi_heads.relation.union_feature_extractor.feature_extractor", ]
     else:
         slow_heads = []
 
     # load pretrain layers to new layers
-    load_mapping = {"roi_heads.relation.box_feature_extractor" : "roi_heads.box.feature_extractor",
-                    "roi_heads.relation.union_feature_extractor.feature_extractor" : "roi_heads.box.feature_extractor"}
-    
+    load_mapping = {"roi_heads.relation.box_feature_extractor": "roi_heads.box.feature_extractor",
+                    "roi_heads.relation.union_feature_extractor.feature_extractor": "roi_heads.box.feature_extractor"}
+
     if cfg.MODEL.ATTRIBUTE_ON:
         load_mapping["roi_heads.relation.att_feature_extractor"] = "roi_heads.attribute.feature_extractor"
         load_mapping["roi_heads.relation.union_feature_extractor.att_feature_extractor"] = "roi_heads.attribute.feature_extractor"
@@ -98,8 +97,8 @@ def train(cfg, local_rank, distributed, logger):
     )
     # if there is certain checkpoint in output_dir, load it, else load pretrained detector
     if checkpointer.has_checkpoint():
-        extra_checkpoint_data = checkpointer.load(cfg.MODEL.PRETRAINED_DETECTOR_CKPT, 
-                                       update_schedule=cfg.SOLVER.UPDATE_SCHEDULE_DURING_LOAD)
+        extra_checkpoint_data = checkpointer.load(cfg.MODEL.PRETRAINED_DETECTOR_CKPT, with_optim=False,
+                                                  update_schedule=cfg.SOLVER.UPDATE_SCHEDULE_DURING_LOAD)
         arguments.update(extra_checkpoint_data)
     else:
         # load_mapping is only used when we init current model from detection model.
@@ -133,7 +132,7 @@ def train(cfg, local_rank, distributed, logger):
     print_first_grad = True
     for iteration, (images, targets, _) in enumerate(train_data_loader, start_iter):
         if any(len(target) < 1 for target in targets):
-            logger.error(f"Iteration={iteration + 1} || Image Ids used for training {_} || targets Length={[len(target) for target in targets]}" )
+            logger.error(f"Iteration={iteration + 1} || Image Ids used for training {_} || targets Length={[len(target) for target in targets]}")
         data_time = time.time() - end
         iteration = iteration + 1
         arguments["iteration"] = iteration
@@ -158,9 +157,9 @@ def train(cfg, local_rank, distributed, logger):
         # Otherwise apply loss scaling for mixed-precision recipe
         with amp.scale_loss(losses, optimizer) as scaled_losses:
             scaled_losses.backward()
-        
+
         # add clip_grad_norm from MOTIFS, tracking gradient, used for debug
-        verbose = (iteration % cfg.SOLVER.PRINT_GRAD_FREQ) == 0 or print_first_grad # print grad or not
+        verbose = (iteration % cfg.SOLVER.PRINT_GRAD_FREQ) == 0 or print_first_grad  # print grad or not
         print_first_grad = False
         clip_grad_norm([(n, p) for n, p in model.named_parameters() if p.requires_grad], max_norm=cfg.SOLVER.GRAD_NORM_CLIP, logger=logger, verbose=verbose, clip=True)
 
@@ -197,12 +196,12 @@ def train(cfg, local_rank, distributed, logger):
         if iteration == max_iter:
             checkpointer.save("model_final", **arguments)
 
-        val_result = None # used for scheduler updating
+        val_result = None  # used for scheduler updating
         if cfg.SOLVER.TO_VAL and iteration % cfg.SOLVER.VAL_PERIOD == 0:
             logger.info("Start validating")
             val_result = run_val(cfg, model, val_data_loaders, distributed, logger)
             logger.info("Validation Result: %.4f" % val_result)
- 
+
         # scheduler should be called after optimizer.step() in pytorch>=1.1.0
         # https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
         if cfg.SOLVER.SCHEDULE.TYPE == "WarmupReduceLROnPlateau":
@@ -220,7 +219,10 @@ def train(cfg, local_rank, distributed, logger):
             total_time_str, total_training_time / (max_iter)
         )
     )
+    extra_checkpoint_data = checkpointer.load(cfg.MODEL.PRETRAINED_DETECTOR_CKPT, with_optim=False,
+                                              update_schedule=cfg.SOLVER.UPDATE_SCHEDULE_DURING_LOAD)
     return model
+
 
 def fix_eval_modules(eval_modules):
     for module in eval_modules:
@@ -228,61 +230,65 @@ def fix_eval_modules(eval_modules):
             param.requires_grad = False
         # DO NOT use module.eval(), otherwise the module will be in the test mode, i.e., all self.training condition is set to False
 
+
 def run_val(cfg, model, val_data_loaders, distributed, logger):
     if distributed:
         model = model.module
     torch.cuda.empty_cache()
-    iou_types = ("bbox",)
+    # iou_types = ("bbox",)
+    iou_types = ()
     if cfg.MODEL.MASK_ON:
         iou_types = iou_types + ("segm",)
     if cfg.MODEL.KEYPOINT_ON:
         iou_types = iou_types + ("keypoints",)
     if cfg.MODEL.RELATION_ON:
-        iou_types = iou_types + ("relations", )
+        iou_types = iou_types + ("relations",)
     if cfg.MODEL.ATTRIBUTE_ON:
-        iou_types = iou_types + ("attributes", )
+        iou_types = iou_types + ("attributes",)
 
     dataset_names = cfg.DATASETS.VAL
     val_result = []
     for dataset_name, val_data_loader in zip(dataset_names, val_data_loaders):
         dataset_result = inference(
-                            cfg,
-                            model,
-                            val_data_loader,
-                            dataset_name=dataset_name,
-                            iou_types=iou_types,
-                            box_only=False if cfg.MODEL.RETINANET_ON else cfg.MODEL.RPN_ONLY,
-                            device=cfg.MODEL.DEVICE,
-                            expected_results=cfg.TEST.EXPECTED_RESULTS,
-                            expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
-                            output_folder=None,
-                            logger=logger,
-                        )
+            cfg,
+            model,
+            val_data_loader,
+            dataset_name=dataset_name,
+            iou_types=iou_types,
+            box_only=False if cfg.MODEL.RETINANET_ON else cfg.MODEL.RPN_ONLY,
+            device=cfg.MODEL.DEVICE,
+            expected_results=cfg.TEST.EXPECTED_RESULTS,
+            expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
+            output_folder=None,
+            logger=logger,
+        )
         synchronize()
         val_result.append(dataset_result)
     # support for multi gpu distributed testing
     gathered_result = all_gather(torch.tensor(dataset_result).cpu())
     gathered_result = [t.view(-1) for t in gathered_result]
     gathered_result = torch.cat(gathered_result, dim=-1).view(-1)
-    valid_result = gathered_result[gathered_result>=0]
+    valid_result = gathered_result[gathered_result >= 0]
     val_result = float(valid_result.mean())
     del gathered_result, valid_result
     torch.cuda.empty_cache()
     return val_result
 
+
 def run_test(cfg, model, distributed, logger):
     if distributed:
         model = model.module
     torch.cuda.empty_cache()
-    iou_types = ("bbox",)
+    iou_types = ()
+    # iou_types = ("bbox",)
     if cfg.MODEL.MASK_ON:
         iou_types = iou_types + ("segm",)
     if cfg.MODEL.KEYPOINT_ON:
         iou_types = iou_types + ("keypoints",)
     if cfg.MODEL.RELATION_ON:
-        iou_types = iou_types + ("relations", )
+        iou_types = iou_types + ("relations",)
     if cfg.MODEL.ATTRIBUTE_ON:
-        iou_types = iou_types + ("attributes", )
+        iou_types = iou_types + ("attributes",)
     output_folders = [None] * len(cfg.DATASETS.TEST)
     dataset_names = cfg.DATASETS.TEST
     if cfg.OUTPUT_DIR:

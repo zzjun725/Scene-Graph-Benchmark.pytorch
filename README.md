@@ -12,14 +12,18 @@ We provide the testing results of predicate classifications(PLS) task on Visual 
 our Bayesian head at the last linear layer of three existing works: NeuralMotifs, VTransE and VCTree.
 
 
-| Methods           | R@20  | R@50  | R@100 | mR@20 | mR@50 | mR@100 |
-|-------------------|-------|-------|-------|-------|-------|--------|
-| NeuralMotifs      | 58.5  | 65.2  | 67.0  | 15.7  | 14.8  | 16.1   |
-| NeuralMotifs w/ [a]| 53.8  | 68.3  | 74.6  | 15.9  | 24.3  | 29.9   |
-| VTransE           | 59.1  | 65.6  | 67.3  | 12.8  | 16.3  | 17.6   |
-| VTransE w/ [a]    | 53.8  | 68.1  | 74.5  | 18.1  | 26.2  | 31.5   |
-| VCTree            | 59.0  | 65.4  | 67.2  | 13.1  | 16.7  | 18.2   |
-| VCTree w/ [a]     | 54.5  | 69.1  | 75.4  | 16.7  | 26.3  | 32.2   |
+| Methods                  | R@20 | R@50 | R@100 | mR@20 | mR@50 | mR@100 |
+|--------------------------|------|------|-------|-------|-------|--------|
+| NeuralMotifs             | 58.5 | 65.2 | 67.0  | 15.7  | 14.8  | 16.1   |
+| NeuralMotifs w/ [a]      | 53.8 | 68.3 | 74.6  | 15.9  | 24.3  | 29.9   |
+| VTransE                  | 59.1 | 65.6 | 67.3  | 12.8  | 16.3  | 17.6   |
+| VTransE w/ [a]           | 53.8 | 68.1 | 74.5  | 18.1  | 26.2  | 31.5   |
+| VCTree                   | 59.0 | 65.4 | 67.2  | 13.1  | 16.7  | 18.2   |
+| VCTree w/ [a]            | 54.5 | 69.1 | 75.4  | 16.7  | 26.3  | 32.2   |
+| Motif + TDE(sum)         | 38.7 | 50.8 | 55.8  | 18.5  | 24.9  | 28.3   |
+| Motif + TDE(sum) w/ [a]  | 39.7 | 56.9 | 66.7  | 20.1  | 28.8  | 34.9   |
+| VCTree + TDE(sum)        | 36.2 | 47.2 | 51.6  | 18.4  | 25.4  | 28.7   |
+| VCTree + TDE(sum) w/ [a] | 39.6 | 56.9 | 66.6  | 19.6  | 28.6  | 35.2   |
 
 [a] means hierarchical relationships in this table.
 
@@ -54,6 +58,11 @@ For VTransE w/Bayesian head:
 
 ```
 CUDA_VISIBLE_DEVICES=5,6 python -m torch.distributed.launch --master_port 10029 --nproc_per_node=2 tools/relation_train_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS False MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR TransformerHierPredictor SOLVER.PRE_VAL False SOLVER.IMS_PER_BATCH 16 TEST.IMS_PER_BATCH 2 DTYPE "float16" SOLVER.MAX_ITER 28000 SOLVER.BASE_LR 0.0005 SOLVER.SCHEDULE.TYPE WarmupMultiStepLR SOLVER.VAL_PERIOD 2000 SOLVER.CHECKPOINT_PERIOD 1000 GLOVE_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/pretrained_faster_rcnn/model_final.pth OUTPUT_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/transformer-hier-bg
+```
+
+For VCTree+TDE w/Bayesian head:
+```
+CUDA_VISIBLE_DEVICES=5,6 python -m torch.distributed.launch --master_port 10022 --nproc_per_node=2 tools/relation_train_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR CausalAnalysisHierPredictor MODEL.ROI_RELATION_HEAD.CAUSAL.EFFECT_TYPE TDE MODEL.ROI_RELATION_HEAD.CAUSAL.FUSION_TYPE sum MODEL.ROI_RELATION_HEAD.CAUSAL.CONTEXT_LAYER vctree SOLVER.PRE_VAL False SOLVER.IMS_PER_BATCH 12 TEST.IMS_PER_BATCH 2 DTYPE "float16" SOLVER.MAX_ITER 50000 SOLVER.VAL_PERIOD 2000 SOLVER.BASE_LR 0.0015 SOLVER.CHECKPOINT_PERIOD 1000 GLOVE_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/pretrained_faster_rcnn/model_final.pth OUTPUT_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/tde_hier_vctree_015
 ```
 
 and an example evaluation command will be: 
