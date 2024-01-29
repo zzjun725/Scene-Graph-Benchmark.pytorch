@@ -9,7 +9,7 @@ We started from the codebase from [Unbiased Scene Graph Generation from Biased T
 # Testing Results
 
 We provide the testing results of predicate classifications(PLS) task on Visual Genome before and after we replace the flat classification head with
-our Bayesian head at the last linear layer of three existing works: NeuralMotifs, VTransE and VCTree.
+our Bayesian head at the last linear layer of three existing works: NeuralMotifs, VTransE and VCTree. We also test our method on the top of TDE(sum) with Motif/Vctree as the context layer. Our work proves to be a valuable add-on to boost their performance by large margins. 
 
 
 | Methods                  | R@20 | R@50 | R@100 | mR@20 | mR@50 | mR@100 |
@@ -27,7 +27,7 @@ our Bayesian head at the last linear layer of three existing works: NeuralMotifs
 
 [a] means hierarchical relationships in this table.
 
-The training for each framework takes several hours on two V100. We also provide the pre-trained weights here([motif](https://drive.google.com/file/d/1IWb2qI-buIwAjSgdbWlAwjDUpxs8d5DW/view?usp=sharing), [vctree](https://drive.google.com/file/d/1prEkfDgGkHJbgDQe5g6wTriK523azjKr/view?usp=sharing), [vtranse](https://drive.google.com/file/d/1Xta2pgLi8wQPnlI-2bMQZBKxQx2YY_dK/view?usp=sharing)) for reference. 
+The training for each framework takes several hours on two V100. We also provide the pre-trained weights here([motif](https://drive.google.com/file/d/1IWb2qI-buIwAjSgdbWlAwjDUpxs8d5DW/view?usp=sharing), [vctree](https://drive.google.com/file/d/1prEkfDgGkHJbgDQe5g6wTriK523azjKr/view?usp=sharing), [vtranse](https://drive.google.com/file/d/1Xta2pgLi8wQPnlI-2bMQZBKxQx2YY_dK/view?usp=sharing), [motif_tde_sum](https://drive.google.com/file/d/1tK-EO2hzjLmCpb6PUgZQC6lZH0sqgvL9/view?usp=sharing), [vctree_tde_sum](https://drive.google.com/file/d/1xBdx81hnxlrDHugI8Fg1FrRZgwKKfowx/view?usp=sharing)) for reference. 
 
 
 # Training & Evaluation
@@ -40,6 +40,8 @@ NeuralMotif w/Bayesian head: `MODEL.ROI_RELATION_HEAD.PREDICTOR MotifHierarchica
 VCTree w/Bayesian head: `MODEL.ROI_RELATION_HEAD.PREDICTOR VCTreeHierPredictor`
 
 VTransE w/Bayesian head: `MODEL.ROI_RELATION_HEAD.PREDICTOR TransformerHierPredictor`
+
+VCTree w/Bayesian head: `MODEL.ROI_RELATION_HEAD.PREDICTOR CausalAnalysisHierPredictor MODEL.ROI_RELATION_HEAD.CAUSAL.CONTEXT_LAYER vctree`
 
 
 The training settings we used for the NeuralMotif w/Bayesian head is(other configs are defined in the `e2e_relation_X_101_32_8_FPN_1x.yaml`):
@@ -70,3 +72,7 @@ and an example evaluation command will be:
 ```
 CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.launch --master_port 10027 --nproc_per_node=1 tools/relation_test_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml"  MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR MotifHierarchicalPredictor TEST.IMS_PER_BATCH 1 DTYPE "float16" GLOVE_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/motif-hierarch OUTPUT_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/motif-hierarch
 ```
+
+# Acknowledgement
+
+This repo is adapted from the scenegraph-benchmark codebase proposed in [Unbiased Scene Graph Generation from Biased Training](https://arxiv.org/abs/2002.11949). Thank you for the contribution!
