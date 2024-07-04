@@ -35,3 +35,7 @@ datasets/vg/
 # MacOS
 .DS_Store
 
+**/llama_key.txt
+
+*.cu
+
