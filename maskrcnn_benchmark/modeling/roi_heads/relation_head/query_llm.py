@@ -1,12 +1,16 @@
 import torch
 from tqdm import tqdm
-import openai
-# from openai import OpenAI
 import math
 from collections import OrderedDict
 import re
 import random
 import json
+import os
+
+# from openai import OpenAI
+import openai
+# Meta Llama API from Replicate
+import replicate
 
 
 class EdgeCache:
@@ -44,7 +48,7 @@ class EdgeCache:
 
 
 class CommonsenseValidator:
-    def __init__(self, top_k=10, max_cache_size=10000):
+    def __init__(self, top_k=10, max_cache_size=10000, llm_model='llama3-8b'): #'gpt-3.5-turbo-instruct'
         self.cache_hits = 0
         self.top_k = top_k
         self.total_cache_queries = 0
@@ -52,13 +56,19 @@ class CommonsenseValidator:
         self.cache.put("", -1)  # Update cache access frequency
 
         # read object and relation labels from the dataset
-        data_path = '/raid0/docker-raid/bwjiang/datasets/vg/50/VG-SGG-dicts-with-attri.json'
+        data_path = '/tmp/datasets/vg/50/VG-SGG-dicts-with-attri.json'
         with open(data_path, 'r') as file:
             data = json.load(file)
         self.idx_to_predicate = data['idx_to_predicate']    # 50
         self.idx_to_object = data['idx_to_label']   # 150
-        print('idx_to_predicate', self.idx_to_predicate)
-        print('idx_to_object', self.idx_to_object)
+
+        self.llm_model = llm_model
+        if self.llm_model == 'llama3-8b':
+            with open("llama_key.txt", "r") as llama_key_file:
+                llama_key = llama_key_file.read()
+            os.environ['REPLICATE_API_TOKEN'] = llama_key
+        # print('idx_to_predicate', self.idx_to_predicate)
+        # print('idx_to_object', self.idx_to_object)
 
 
     def query(self, rel_pair_idx, rel_labels):
@@ -79,10 +89,80 @@ class CommonsenseValidator:
             batched_edges.append(edge)
 
         # query
-        all_responses = self.batch_query_openai_gpt(batched_edges)
+        if self.llm_model == 'gpt-3.5-turbo-instruct':
+            all_responses = self.batch_query_openai_gpt(batched_edges)
+        else:
+            all_responses = []
+            for edge in batched_edges:
+                all_responses.append(self.query_llama(edge))
+
         all_responses = torch.tensor(all_responses)
 
         return all_responses
+
+
+    def query_llama(self, edge, verbose=False):
+        # Prepare multiple variations of each prompt
+        prompt_variations = [
+            "Is the relation '{}' generally make sense or a trivially true fact? Answer with 'Yes' or 'No' and justify your answer. A trivially true relation is still a 'Yes'.",
+            "Could there be either a {} or a {}s? Yes or No and justify your answer.",
+            "Regardless of whether it is basic or redundant, is the relation '{}' incorrect and is a mis-classification in scene graph generation? Show your reasoning and answer 'Yes' or 'No'.",
+            "Is the relation {} impossible in real world? Answer 'Yes' or 'No' and explain your answer."
+        ]
+
+        # For each predicted edge, create multiple prompts
+        yes_votes = 0
+        no_votes = 0
+        for j, variation in enumerate(prompt_variations):
+            if j == 1:
+                prompt = variation.format(edge, edge)
+            else:
+                prompt = variation.format(edge)
+
+            response = ""
+            try:
+                for event in replicate.stream(
+                        "meta/llama3-8b",
+                        input={
+                            "prompt": prompt,
+                            "max_length": 500,
+                            "max_new_tokens": 300
+                        },
+                ):
+                    response += str(event)
+            except Exception as e:
+                response = ""
+
+            if j == 2 or j == 3:  # For the last two questions, we reverse the logic
+                if re.search(r'Yes', response):
+                    no_votes += 1
+                elif re.search(r'No', response):
+                    yes_votes += 1
+                else:
+                    no_votes += 1
+            else:
+                if re.search(r'Yes', response):
+                    if j == 0:
+                        yes_votes += 2
+                    else:
+                        yes_votes += 1
+                else:
+                    if j == 0:
+                        no_votes += 2
+                    else:
+                        no_votes += 1
+
+        # if yes_votes > no_votes:
+        if yes_votes >= 2:
+            if verbose:
+                print(f'predicted_edge {edge} [MAJORITY YES] {yes_votes} Yes votes vs {no_votes} No votes')
+            score = 1
+        else:
+            # print(f'predicted_edge {edge} [MAJORITY NO] {no_votes} No votes vs {yes_votes} Yes votes')
+            if verbose:
+                print(f'predicted_edge {edge} [MAJORITY NO] {no_votes} No votes vs {yes_votes} Yes votes')
+            score = -1
+        return score
 
 
     def batch_query_openai_gpt(self, predicted_edges, batch_size=4):
@@ -116,7 +196,7 @@ class CommonsenseValidator:
         """ This function queries OpenAI GPT-3.5-turbo-instruct model with a batch of subject-relation-object triplets whether each triplet is commonsense-aligned or violated.
         We support GPT3.5 for plug-and-play fashion in the Scene-Graph-Benchmark codebase, and support both GPT3.5 and GPT4V in our standalone codebase.
         """
-        openai.api_key_path = '/raid0/docker-raid/bwjiang/scene_graph/openai_key.txt'  # Path to your OpenAI API key
+        openai.api_key_path = '/pool/bwjiang/scene_graph/openai_key.txt'  # Path to your OpenAI API key
         responses = torch.ones(len(predicted_edges)) * -1
 
         prompts = []
@@ -174,13 +254,14 @@ class CommonsenseValidator:
                         else:
                             no_votes += 1
 
-            if yes_votes > no_votes:
+            # if yes_votes > no_votes:
+            if yes_votes >= 2:
                 if verbose:
                     print(f'predicted_edge {edge} [MAJORITY YES] {yes_votes} Yes votes vs {no_votes} No votes')
                 responses[i] = 1
             else:
+                # print(f'predicted_edge {edge} [MAJORITY NO] {no_votes} No votes vs {yes_votes} Yes votes')
                 if verbose:
                     print(f'predicted_edge {edge} [MAJORITY NO] {no_votes} No votes vs {yes_votes} Yes votes')
                 responses[i] = -1
-
         return responses

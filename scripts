@@ -1,7 +1,7 @@
 # install
-conda create --name sg_ebm2 python=3.8
+conda create --name sg_hml python=3.8
 conda install ipython && conda install scipy && conda install h5py \
-&& pip install ninja yacs cython matplotlib tqdm opencv-python overrides \
+&& pip install ninja yacs cython matplotlib tqdm opencv-python overrides openai \
 && conda install pytorch==1.7.0 torchvision==0.8.0 torchaudio==0.7.0 cudatoolkit=10.1 -c pytorch
 
 conda install -c "conda-forge/label/cf202003" cudatoolkit-dev
@@ -13,6 +13,16 @@ cd $INSTALL_DIR && git clone https://github.com/cocodataset/cocoapi.git && cd co
 cd $INSTALL_DIR && git clone https://github.com/NVIDIA/apex.git && cd apex && git reset --hard 3fe10b5597ba14a748ebb271a6ab97c09c5701ac && python setup.py install --cuda_ext --cpp_ext
 
 cd $INSTALL_DIR && git clone https://github.com/zzjun725/Scene-Graph-Benchmark.pytorch.git && cd scene-graph-benchmark && python setup.py build develop
+
+######## To use higher version of pytorch ########
+# Pytorch 1.11 has deleted the folder THC/THC.h. To use higher version of pytorch, need to modify the cuda compile files. Ref: https://github.com/NVIDIA/DeepLearningExamples/issues/1090
+
+# Apex  No module named 'torch._six' error: https://github.com/NVIDIA/apex/issues/1724
+
+# File "/pool/bwjiang/scene_graph/scenegraph_benchmark/Scene-Graph-Benchmark.pytorch/maskrcnn_benchmark/utils/model_zoo.py
+# ImportError: cannot import name '_download_url_to_file' from 'torch.utils.model_zoo': change to from torch.hub import download_url_to_file
+
+# With single GPU: https://github.com/NVIDIA/apex/issues/1303
 
 unset INSTALL_DIR
 
@@ -93,6 +103,11 @@ wget --no-check-certificate "https://onedrive.live.com/download?resid=22376FFAD7
 
 CUDA_VISIBLE_DEVICES=1,2 python -m torch.distributed.launch --master_port 10026 --nproc_per_node=2 tools/relation_train_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR CausalAnalysisPredictor MODEL.ROI_RELATION_HEAD.CAUSAL.EFFECT_TYPE TDE MODEL.ROI_RELATION_HEAD.CAUSAL.FUSION_TYPE sum MODEL.ROI_RELATION_HEAD.CAUSAL.CONTEXT_LAYER motifs  SOLVER.IMS_PER_BATCH 12 TEST.IMS_PER_BATCH 2 DTYPE "float16" SOLVER.MAX_ITER 50000 SOLVER.VAL_PERIOD 2000 SOLVER.CHECKPOINT_PERIOD 2000 GLOVE_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/pretrained_faster_rcnn/model_final.pth OUTPUT_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/tde_precls
 
-CUDA_VISIBLE_DEVICES=5,6 python -m torch.distributed.launch --master_port 10022 --nproc_per_node=2 tools/relation_train_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR CausalAnalysisHierPredictor MODEL.ROI_RELATION_HEAD.CAUSAL.EFFECT_TYPE TDE MODEL.ROI_RELATION_HEAD.CAUSAL.FUSION_TYPE sum MODEL.ROI_RELATION_HEAD.CAUSAL.CONTEXT_LAYER vctree SOLVER.PRE_VAL False SOLVER.IMS_PER_BATCH 12 TEST.IMS_PER_BATCH 2 DTYPE "float16" SOLVER.MAX_ITER 50000 SOLVER.VAL_PERIOD 2000 SOLVER.BASE_LR 0.0015 SOLVER.CHECKPOINT_PERIOD 1000 GLOVE_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/pretrained_faster_rcnn/model_final.pth OUTPUT_DIR /raid0/docker-raid/bwjiang/scene_graph/checkpoints/benchmark/tde_hier_vctree_015
+# CUDA_VISIBLE_DEVICES=5,6 python -m torch.distributed.launch --master_port 10022 --nproc_per_node=2 tools/relation_train_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR CausalAnalysisHierPredictor MODEL.ROI_RELATION_HEAD.CAUSAL.EFFECT_TYPE TDE MODEL.ROI_RELATION_HEAD.CAUSAL.FUSION_TYPE sum MODEL.ROI_RELATION_HEAD.CAUSAL.CONTEXT_LAYER vctree SOLVER.PRE_VAL False SOLVER.IMS_PER_BATCH 12 TEST.IMS_PER_BATCH 2 DTYPE "float16" SOLVER.MAX_ITER 50000 SOLVER.VAL_PERIOD 2000 SOLVER.BASE_LR 0.0015 SOLVER.CHECKPOINT_PERIOD 1000 GLOVE_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /pool/bwjiang/scene_graph/checkpoints/benchmark/pretrained_faster_rcnn/model_final.pth OUTPUT_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/test
+# use torchrun
+CUDA_VISIBLE_DEVICES=5 torchrun --master_port 10022 --nproc_per_node=1 tools/relation_train_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR CausalAnalysisHierPredictor MODEL.ROI_RELATION_HEAD.CAUSAL.EFFECT_TYPE TDE MODEL.ROI_RELATION_HEAD.CAUSAL.FUSION_TYPE sum MODEL.ROI_RELATION_HEAD.CAUSAL.CONTEXT_LAYER vctree SOLVER.PRE_VAL False SOLVER.IMS_PER_BATCH 12 TEST.IMS_PER_BATCH 2 DTYPE "float16" SOLVER.MAX_ITER 50000 SOLVER.VAL_PERIOD 2000 SOLVER.BASE_LR 0.0015 SOLVER.CHECKPOINT_PERIOD 1000 GLOVE_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /pool/bwjiang/scene_graph/checkpoints/benchmark/pretrained_faster_rcnn/model_final.pth OUTPUT_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/test
+CUDA_VISIBLE_DEVICES=5 torchrun --master_port 10022 --nproc_per_node=1 tools/relation_train_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS False MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR MotifHierarchicalPredictor SOLVER.PRE_VAL False SOLVER.IMS_PER_BATCH 12 TEST.IMS_PER_BATCH 2 DTYPE "float16" SOLVER.MAX_ITER 30000 SOLVER.BASE_LR 0.0025 SOLVER.VAL_PERIOD 2000 SOLVER.CHECKPOINT_PERIOD 1000 GLOVE_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /pool/bwjiang/scene_graph/checkpoints/benchmark/pretrained_faster_rcnn/model_final.pth OUTPUT_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/test_ori
 
 LD_LIBRARY_PATH=/raid0/docker-raid/bwjiang/anaconda3/envs/sg_ebm/lib/:$LD_LIBRARY_PATH
+
+CUDA_VISIBLE_DEVICES=5 torchrun --master_port 10022 --nproc_per_node=1 tools/relation_test_net.py --config-file "configs/e2e_relation_X_101_32_8_FPN_1x.yaml" MODEL.ROI_RELATION_HEAD.PREDICT_USE_BIAS False MODEL.ROI_RELATION_HEAD.USE_GT_BOX True MODEL.ROI_RELATION_HEAD.USE_GT_OBJECT_LABEL True MODEL.ROI_RELATION_HEAD.PREDICTOR MotifHierarchicalPredictor TEST.IMS_PER_BATCH 16 DTYPE "float16" TEST.ALLOW_LOAD_FROM_CACHE False GLOVE_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/glove MODEL.PRETRAINED_DETECTOR_CKPT /pool/bwjiang/scene_graph/checkpoints/benchmark/motif-hierarch OUTPUT_DIR /pool/bwjiang/scene_graph/checkpoints/benchmark/motif-hierarch

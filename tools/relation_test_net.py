@@ -41,7 +41,7 @@ def main():
         metavar="FILE",
         help="path to config file",
     )
-    parser.add_argument("--local-rank", type=int, default=0)
+    parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",

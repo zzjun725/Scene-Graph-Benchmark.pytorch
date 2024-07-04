@@ -506,7 +506,14 @@ def _triplet(relations, classes, boxes, predicate_scores=None, class_scores=None
         triplets_scores (#rel, 3) : (sub_score, pred_score, ob_score)
     """
     sub_id, ob_id, pred_label = relations[:, 0], relations[:, 1], relations[:, 2]
-    triplets = np.column_stack((classes[sub_id], pred_label, classes[ob_id]))
+    try:
+        triplets = np.column_stack((classes[sub_id], pred_label, classes[ob_id]))
+    except:
+        print(sub_id, ob_id, classes)
+        sub_id = np.zeros_like(sub_id)
+        ob_id = np.zeros_like(ob_id)
+        triplets = np.column_stack((classes[sub_id], pred_label, classes[ob_id]))
+
     triplet_boxes = np.column_stack((boxes[sub_id], boxes[ob_id]))
 
     triplet_scores = None

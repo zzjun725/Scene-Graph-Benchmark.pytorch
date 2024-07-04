@@ -124,16 +124,11 @@ class PostProcessor(nn.Module):
             rel_class_prob = rel_class_prob[sorting_idx]
             rel_labels = rel_class[sorting_idx]
 
-            #############################################################
-            # # query llm about top k triplets for commonsense validation
-            # llm_responses = self.llm.query(rel_pair_idx[:self.llm.top_k, :], rel_labels[:self.llm.top_k])
-            # rel_class_prob[:self.llm.top_k, :][llm_responses == -1] = -math.inf
-            #
-            # # resort the triplets
-            # _, sorting_idx = torch.sort(rel_class_prob, dim=0, descending=True)
-            # rel_pair_idx = rel_pair_idx[sorting_idx]
-            # rel_class_prob = rel_class_prob[sorting_idx]
-            # rel_labels = rel_labels[sorting_idx]
+            # resort the triplets
+            _, sorting_idx = torch.sort(rel_class_prob, dim=0, descending=True)
+            rel_pair_idx = rel_pair_idx[sorting_idx]
+            rel_class_prob = rel_class_prob[sorting_idx]
+            rel_labels = rel_labels[sorting_idx]
             #############################################################
 
             boxlist.add_field('rel_pair_idxs', rel_pair_idx)  # (#rel, 2)
@@ -189,6 +184,7 @@ class HierarchPostProcessor(nn.Module):
         self.obj_sementic = {int(k): v for k, v in self.obj_sementic.items()}
 
         self.llm = CommonsenseValidator()
+        self.skip_top = 10
 
     def forward(self, x, rel_pair_idxs, boxes):
         """
@@ -253,20 +249,21 @@ class HierarchPostProcessor(nn.Module):
             obj_scores0 = obj_scores[rel_pair_idx[:, 0]]
             obj_scores1 = obj_scores[rel_pair_idx[:, 1]]
 
-            self.geo_label_tensor.to(rel1_prob.device)
-            self.pos_label_tensor.to(rel1_prob.device)
-            self.sem_label_tensor.to(rel1_prob.device)
             rel1_prob = torch.exp(rel1_prob)
             rel2_prob = torch.exp(rel2_prob)
             rel3_prob = torch.exp(rel3_prob)
 
             # For Bayesian classification head, we predict three edges for one pair(each edge for one super category),
             # then gather all the predictions for ranking.
+            device = rel1_prob.device
             rel1_scores, rel1_class = rel1_prob.max(dim=1)
+            self.geo_label_tensor = self.geo_label_tensor.to(device)
             rel1_class = self.geo_label_tensor[rel1_class]
             rel2_scores, rel2_class = rel2_prob.max(dim=1)
+            self.pos_label_tensor = self.pos_label_tensor.to(device)
             rel2_class = self.pos_label_tensor[rel2_class]
             rel3_scores, rel3_class = rel3_prob.max(dim=1)
+            self.sem_label_tensor = self.sem_label_tensor.to(device)
             rel3_class = self.sem_label_tensor[rel3_class]
 
             cat_class_prob = torch.cat((rel1_prob, rel2_prob, rel3_prob),
@@ -284,22 +281,26 @@ class HierarchPostProcessor(nn.Module):
                                    dim=0)
 
             triple_scores = cat_scores * cat_obj_score0 * cat_obj_score1
-            _, sorting_idx = torch.sort(triple_scores.view(-1), dim=0,
+            triple_scores, sorting_idx = torch.sort(triple_scores.view(-1), dim=0,
                                         descending=True)
+            # triple_scores = triple_scores.view(-1)
+            # triple_scores = triple_scores[sorting_idx]
             rel_pair_idx = cat_rel_pair_idx[sorting_idx]
             rel_class_prob = cat_class_prob[sorting_idx]
             rel_labels = cat_labels[sorting_idx]
 
             #############################################################
             # # query llm about top k triplets for commonsense validation
-            # llm_responses = self.llm.query(rel_pair_idx[:self.llm.top_k, :], rel_labels[:self.llm.top_k])
-            # rel_class_prob[:self.llm.top_k, :][llm_responses == -1] = -math.inf
-            #
-            # # resort the triplets
-            # _, sorting_idx = torch.sort(rel_class_prob, dim=0, descending=True)
-            # rel_pair_idx = rel_pair_idx[sorting_idx]
-            # rel_class_prob = rel_class_prob[sorting_idx]
-            # rel_labels = rel_labels[sorting_idx]
+            subj = obj_class[rel_pair_idx[self.skip_top:self.skip_top + self.llm.top_k, 0]]
+            obj = obj_class[rel_pair_idx[self.skip_top:self.skip_top + self.llm.top_k, 1]]
+            combined_obj_label = torch.stack((subj, obj), dim=1)
+            llm_responses = self.llm.query(combined_obj_label, rel_labels[self.skip_top:self.skip_top + self.llm.top_k])
+            triple_scores[self.skip_top:self.skip_top + self.llm.top_k][llm_responses == -1] = -math.inf
+            # #
+            # # # resort the triplets
+            _, sorting_idx = torch.sort(triple_scores, dim=0, descending=True)
+            rel_pair_idx = rel_pair_idx[sorting_idx]
+            rel_labels = rel_labels[sorting_idx]
             #############################################################
 
             boxlist.add_field('rel_pair_idxs', rel_pair_idx)  # (#rel, 2)
