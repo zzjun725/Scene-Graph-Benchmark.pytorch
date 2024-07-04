@@ -7,8 +7,8 @@ import random
 import json
 import os
 
-# from openai import OpenAI
 import openai
+from openai import OpenAI
 # Meta Llama API from Replicate
 import replicate
 
@@ -67,6 +67,9 @@ class CommonsenseValidator:
             with open("llama_key.txt", "r") as llama_key_file:
                 llama_key = llama_key_file.read()
             os.environ['REPLICATE_API_TOKEN'] = llama_key
+        if self.llm_model == 'gpt-3.5-turbo':
+            with open("openai_key.txt", "r") as api_key_file:
+                self.api_key = api_key_file.read()
         # print('idx_to_predicate', self.idx_to_predicate)
         # print('idx_to_object', self.idx_to_object)
 
@@ -91,14 +94,77 @@ class CommonsenseValidator:
         # query
         if self.llm_model == 'gpt-3.5-turbo-instruct':
             all_responses = self.batch_query_openai_gpt(batched_edges)
-        else:
+        elif self.llm_model == 'gpt-3.5-turbo':
+            all_responses = []
+            for edge in batched_edges:
+                all_responses.append(self.query_openai_gpt(edge))
+        elif self.llm_model == 'llama3-8b':
             all_responses = []
             for edge in batched_edges:
                 all_responses.append(self.query_llama(edge))
+        else:
+            raise ValueError('llm_model should be either gpt-3.5-turbo, gpt-3.5-turbo-instruct, or llama3-8b')
 
         all_responses = torch.tensor(all_responses)
 
         return all_responses
+
+
+    def query_openai_gpt(self, edge, verbose=False):
+        # Prepare multiple variations of each prompt
+        prompt_variations = [
+            "Is the relation '{}' generally make sense or a trivially true fact? Answer with 'Yes' or 'No' and justify your answer. A trivially true relation is still a 'Yes'.",
+            "Could there be either a {} or a {}s? Yes or No and justify your answer.",
+            "Regardless of whether it is basic or redundant, is the relation '{}' incorrect and is a mis-classification in scene graph generation? Show your reasoning and answer 'Yes' or 'No'.",
+            "Is the relation {} impossible in real world? Answer 'Yes' or 'No' and explain your answer."
+        ]
+
+        # For each predicted edge, create multiple prompts
+        yes_votes = 0
+        no_votes = 0
+        for j, variation in enumerate(prompt_variations):
+            if j == 1:
+                prompt = variation.format(edge, edge)
+            else:
+                prompt = variation.format(edge)
+
+            client = OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(
+                model='gpt-3.5-turbo',
+                messages=prompt,
+                max_tokens=500
+            )
+            response = response.choices[0].message.content
+
+            if j == 2 or j == 3:  # For the last two questions, we reverse the logic
+                if re.search(r'Yes', response):
+                    no_votes += 1
+                elif re.search(r'No', response):
+                    yes_votes += 1
+                else:
+                    no_votes += 1
+            else:
+                if re.search(r'Yes', response):
+                    if j == 0:
+                        yes_votes += 2
+                    else:
+                        yes_votes += 1
+                else:
+                    if j == 0:
+                        no_votes += 2
+                    else:
+                        no_votes += 1
+
+        # if yes_votes > no_votes:
+        if yes_votes >= 2:
+            if verbose:
+                print(f'predicted_edge {edge} [MAJORITY YES] {yes_votes} Yes votes vs {no_votes} No votes')
+            score = 1
+        else:
+            if verbose:
+                print(f'predicted_edge {edge} [MAJORITY NO] {no_votes} No votes vs {yes_votes} Yes votes')
+            score = -1
+        return score
 
 
     def query_llama(self, edge, verbose=False):
@@ -158,7 +224,6 @@ class CommonsenseValidator:
                 print(f'predicted_edge {edge} [MAJORITY YES] {yes_votes} Yes votes vs {no_votes} No votes')
             score = 1
         else:
-            # print(f'predicted_edge {edge} [MAJORITY NO] {no_votes} No votes vs {yes_votes} Yes votes')
             if verbose:
                 print(f'predicted_edge {edge} [MAJORITY NO] {no_votes} No votes vs {yes_votes} Yes votes')
             score = -1

@@ -36,6 +36,7 @@ datasets/vg/
 .DS_Store
 
 **/llama_key.txt
+**/openai_key.txt
 
 *.cu
 
