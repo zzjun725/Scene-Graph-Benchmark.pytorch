@@ -1,10 +1,19 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 # Set up custom environment before nearly anything else is imported
 # NOTE: this should be the first import (no not reorder)
+
+import sys
+import os
+
+# Get the directory where the script is located
+script_dir = os.path.dirname(__file__)
+# Add the parent directory to sys.path
+parent_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
+sys.path.insert(0, parent_dir)
+
 from maskrcnn_benchmark.utils.env import setup_environment  # noqa F401 isort:skip
 
 import argparse
-import os
 
 import torch
 from maskrcnn_benchmark.config import cfg
@@ -32,7 +41,7 @@ def main():
         metavar="FILE",
         help="path to config file",
     )
-    parser.add_argument("--local_rank", type=int, default=0)
+    parser.add_argument("--local-rank", type=int, default=0)
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
