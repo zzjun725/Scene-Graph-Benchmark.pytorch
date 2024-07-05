@@ -40,7 +40,7 @@ def compute_on_dataset(model, data_loader, device, synchronize_gather=True, time
     torch.cuda.empty_cache()
     for i, batch in enumerate(tqdm(data_loader)):
         # [ad-hoc] clip if i > 10
-        if i > 500:
+        if i > 1000:
             break
         with torch.no_grad():
             images, targets, image_ids = batch
